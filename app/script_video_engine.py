@@ -14,20 +14,23 @@ def _ensure():
  with _db() as c:
   c.execute("""CREATE TABLE IF NOT EXISTS script_video_jobs(
    id TEXT PRIMARY KEY,script_id TEXT NOT NULL,voice_job_id TEXT NOT NULL,
-   status TEXT NOT NULL,video_asset_id TEXT,scene_asset_ids_json TEXT NOT NULL DEFAULT '[]',error TEXT NOT NULL DEFAULT '',
+   status TEXT NOT NULL,video_asset_id TEXT,scene_asset_ids_json TEXT NOT NULL DEFAULT '[]',motion_preset TEXT NOT NULL DEFAULT 'cinematic',error TEXT NOT NULL DEFAULT '',
    created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""")
   cols={r["name"] for r in c.execute("PRAGMA table_info(script_video_jobs)").fetchall()}
   if "scene_asset_ids_json" not in cols:
    c.execute("ALTER TABLE script_video_jobs ADD COLUMN scene_asset_ids_json TEXT NOT NULL DEFAULT '[]'")
+  if "motion_preset" not in cols:
+   c.execute("ALTER TABLE script_video_jobs ADD COLUMN motion_preset TEXT NOT NULL DEFAULT 'cinematic'")
 def _row(r):
  if not r:return None
  item=dict(r)
  import json
  item["scene_asset_ids"]=json.loads(item.pop("scene_asset_ids_json","[]") or "[]")
  return item
-def create_job(script_id,voice_job_id,scene_asset_ids=None):
+def create_job(script_id,voice_job_id,scene_asset_ids=None,motion_preset='cinematic'):
  script=get_script(script_id); voice=get_voice_job(voice_job_id)
  if not script or not voice or voice.get("script_id")!=script_id:return None
+ if motion_preset not in {'cinematic','gentle_zoom','pan_left','pan_right','static'}:return None
  scene_asset_ids=list(scene_asset_ids or [])
  scenes=(script.get("content") or {}).get("scenes") or []
  if len(scene_asset_ids)>12 or (scene_asset_ids and len(scene_asset_ids)!=len(scenes)):return None
@@ -36,7 +39,7 @@ def create_job(script_id,voice_job_id,scene_asset_ids=None):
    asset=media_asset_get(asset_id)
    if not asset or asset.get("media_type")!="image":return None
  _ensure(); now=datetime.now(timezone.utc).isoformat(); jid=str(uuid4())
- with _db() as c:c.execute("INSERT INTO script_video_jobs(id,script_id,voice_job_id,status,scene_asset_ids_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(jid,script_id,voice_job_id,"queued",__import__("json").dumps(scene_asset_ids),now,now))
+ with _db() as c:c.execute("INSERT INTO script_video_jobs(id,script_id,voice_job_id,status,scene_asset_ids_json,motion_preset,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",(jid,script_id,voice_job_id,"queued",__import__("json").dumps(scene_asset_ids),motion_preset,now,now))
  return get_job(jid)
 def get_job(jid):
  _ensure()
@@ -78,7 +81,19 @@ def run_job(jid):
     clip=temp/f"scene-{i:03d}.mp4"; source=image_paths[i] if i<len(image_paths) else None
     if source:
      video_input=["-loop","1","-framerate","30","-i",str(source)]
-     vf="scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p"
+     base="scale=1200:2134:force_original_aspect_ratio=increase,crop=1200:2134,setsar=1"
+     frames=max(1,int(segment_duration*30))
+     preset=job.get("motion_preset","cinematic")
+     mode=preset if preset!="cinematic" else ("gentle_zoom" if i%3==0 else "pan_left" if i%3==1 else "pan_right")
+     if mode=="gentle_zoom":
+      zoom="min(1.12,1+0.0007*on)"; x="iw/2-(iw/zoom/2)"; y="ih/2-(ih/zoom/2)"
+     elif mode=="pan_left":
+      zoom="1.10"; x=f"(iw-iw/zoom)*(1-on/{max(1,frames-1)})"; y="ih/2-(ih/zoom/2)"
+     elif mode=="pan_right":
+      zoom="1.10"; x=f"(iw-iw/zoom)*(on/{max(1,frames-1)})"; y="ih/2-(ih/zoom/2)"
+     else:
+      zoom="1"; x="iw/2-(iw/zoom/2)"; y="ih/2-(ih/zoom/2)"
+     vf=base+f",zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s=1080x1920:fps=30,format=yuv420p"
     else:
      video_input=["-f","lavfi","-i",f"color=c=0x172033:s=1080x1920:r=30:d={segment_duration:.3f}"]
      vf="format=yuv420p"
