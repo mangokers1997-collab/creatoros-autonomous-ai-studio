@@ -47,6 +47,30 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
         CREATE INDEX IF NOT EXISTS idx_projects_channel ON projects(channel_id);
+        CREATE TABLE IF NOT EXISTS research_briefs (
+            id TEXT PRIMARY KEY,
+            topic TEXT NOT NULL,
+            niche TEXT NOT NULL,
+            target_market TEXT NOT NULL,
+            language TEXT NOT NULL,
+            audience TEXT NOT NULL DEFAULT '',
+            goal TEXT NOT NULL DEFAULT '',
+            keywords TEXT NOT NULL DEFAULT '',
+            competitors TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS research_sources (
+            id TEXT PRIMARY KEY,
+            brief_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL DEFAULT '',
+            source_type TEXT NOT NULL DEFAULT 'article',
+            observation TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(brief_id) REFERENCES research_briefs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_market ON research_briefs(target_market);
         """)
 
 
@@ -138,3 +162,61 @@ def project_update_status(project_id: str, status: str) -> dict | None:
         return _dict(conn.execute(
             "SELECT * FROM projects WHERE id=?", (project_id,)
         ).fetchone())
+
+
+def research_create(data: dict) -> dict:
+    item = {"id": str(uuid4()), **data, "created_at": _now()}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO research_briefs
+            (id,topic,niche,target_market,language,audience,goal,keywords,competitors,notes,created_at)
+            VALUES (:id,:topic,:niche,:target_market,:language,:audience,:goal,:keywords,:competitors,:notes,:created_at)""",
+            item,
+        )
+    return {**item, "sources": []}
+
+
+def research_list(target_market: str | None = None, niche: str | None = None, limit: int = 50) -> list[dict]:
+    clauses, params = [], []
+    if target_market:
+        clauses.append("target_market=?")
+        params.append(target_market)
+    if niche:
+        clauses.append("niche=?")
+        params.append(niche)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM research_briefs{where} ORDER BY created_at DESC LIMIT ?",
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def research_get(brief_id: str) -> dict | None:
+    with _connect() as conn:
+        row = _dict(conn.execute(
+            "SELECT * FROM research_briefs WHERE id=?", (brief_id,)
+        ).fetchone())
+        if not row:
+            return None
+        row["sources"] = [dict(source) for source in conn.execute(
+            "SELECT * FROM research_sources WHERE brief_id=? ORDER BY created_at DESC",
+            (brief_id,),
+        ).fetchall()]
+        return row
+
+
+def research_source_create(brief_id: str, data: dict) -> dict | None:
+    if not research_get(brief_id):
+        return None
+    item = {"id": str(uuid4()), "brief_id": brief_id, **data, "created_at": _now()}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO research_sources
+            (id,brief_id,title,url,source_type,observation,created_at)
+            VALUES (:id,:brief_id,:title,:url,:source_type,:observation,:created_at)""",
+            item,
+        )
+    return item
