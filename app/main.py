@@ -17,6 +17,7 @@ from app.voice_engine import piper_available, run_voice_job
 from app.database import trend_items_list
 from app.trend_engine import fetch_google_trends, MARKETS
 from app.intelligence_engine import analyze_content_opportunities, get_intelligence_reports
+from app.strategy_engine import generate_strategy, get_strategy, list_strategies, update_strategy_item
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -31,7 +32,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.9.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -92,6 +93,21 @@ class IntelligenceRequest(BaseModel):
     competitor_queries: list[str] = Field(default_factory=list, max_length=5)
 
 
+class StrategyGenerateRequest(BaseModel):
+    market: str = Field(default="US", min_length=2, max_length=2)
+    niche: str = Field(default="personal finance", min_length=2, max_length=80)
+    language: str = Field(default="en", max_length=12)
+    channel_id: str | None = None
+    start_date: str = Field(default_factory=lambda: __import__("datetime").date.today().isoformat())
+    days: int = Field(default=30, ge=1, le=90)
+    videos_per_day: int = Field(default=1, ge=1, le=5)
+
+
+class StrategyItemUpdate(BaseModel):
+    status: Literal["planned", "in_progress", "ready_for_review", "approved", "skipped", "published"] = "planned"
+    project_id: str | None = None
+
+
 class ResearchSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     url: str = Field(default="", max_length=1000)
@@ -106,7 +122,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "0.9.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "1.0.0"}
 
 
 @app.get("/api/v1/channels")
@@ -233,6 +249,51 @@ def list_intelligence_reports(
     limit: int = Query(default=30, ge=1, le=100),
 ):
     return get_intelligence_reports(market=market, niche=niche, limit=limit)
+
+
+@app.post("/api/v1/strategies/generate", status_code=201)
+def create_strategy(payload: StrategyGenerateRequest):
+    if payload.channel_id:
+        from app.database import channel_get
+        channel = channel_get(payload.channel_id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+        if channel["target_market"].upper() != payload.market.upper():
+            raise HTTPException(status_code=422, detail="Channel target market does not match strategy market")
+    try:
+        return generate_strategy(
+            payload.market, payload.niche, payload.language, payload.channel_id,
+            payload.start_date, payload.days, payload.videos_per_day,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/strategies")
+def list_strategy_plans(
+    market: str | None = None,
+    niche: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+):
+    return list_strategies(market=market, niche=niche, limit=limit)
+
+
+@app.get("/api/v1/strategies/{plan_id}")
+def get_strategy_plan(plan_id: str):
+    plan = get_strategy(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Strategy plan not found")
+    return plan
+
+
+@app.patch("/api/v1/strategy-items/{item_id}")
+def patch_strategy_item(item_id: str, payload: StrategyItemUpdate):
+    if payload.project_id and not project_get(payload.project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    item = update_strategy_item(item_id, payload.status, payload.project_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Strategy item not found")
+    return item
 
 
 @app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
@@ -407,7 +468,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "keyword-and-competitor-intelligence",
+        "phase": "ai-content-strategy-engine",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
