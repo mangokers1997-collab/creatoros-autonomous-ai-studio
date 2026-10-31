@@ -51,6 +51,8 @@ def run_production_batch(batch_id: str) -> None:
                 if not package:
                     raise RuntimeError("Content package generation failed.")
                 current = production_batch_item_update(current["id"], "processing", package_id=package["id"])
+            if options.get("generate_voice") and not piper_available():
+                raise RuntimeError("Local voice was requested but Piper or PIPER_MODEL is not configured.")
             if options.get("generate_voice") and piper_available():
                 voice = voice_job_get(current.get("voice_job_id")) if current.get("voice_job_id") else None
                 if not voice:
