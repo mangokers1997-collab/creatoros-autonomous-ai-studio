@@ -1033,10 +1033,11 @@ def channel_performance_records(channel_id: str | None = None, limit: int = 500)
         JOIN publish_jobs j ON j.id=m.publish_job_id
         JOIN projects p ON p.id=j.project_id
         JOIN channels c ON c.id=j.channel_id
+        WHERE j.status='published'
     """
     params = []
     if channel_id:
-        query += " WHERE c.id=?"
+        query += " AND c.id=?"
         params.append(channel_id)
     query += " GROUP BY j.id ORDER BY views DESC LIMIT ?"
     params.append(limit)
