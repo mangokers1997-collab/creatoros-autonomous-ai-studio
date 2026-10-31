@@ -16,6 +16,9 @@ def _ensure():
    id TEXT PRIMARY KEY,script_id TEXT NOT NULL,voice_job_id TEXT NOT NULL,
    status TEXT NOT NULL,video_asset_id TEXT,scene_asset_ids_json TEXT NOT NULL DEFAULT '[]',error TEXT NOT NULL DEFAULT '',
    created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""")
+  cols={r["name"] for r in c.execute("PRAGMA table_info(script_video_jobs)").fetchall()}
+  if "scene_asset_ids_json" not in cols:
+   c.execute("ALTER TABLE script_video_jobs ADD COLUMN scene_asset_ids_json TEXT NOT NULL DEFAULT '[]'")
 def _row(r):
  if not r:return None
  item=dict(r)
