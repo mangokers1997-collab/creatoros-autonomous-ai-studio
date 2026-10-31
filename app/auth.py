@@ -36,6 +36,12 @@ def init_auth_tables() -> None:
             FOREIGN KEY(user_id) REFERENCES auth_users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+        CREATE TABLE IF NOT EXISTS auth_login_attempts (
+            username_key TEXT PRIMARY KEY,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            window_started_at TEXT NOT NULL,
+            locked_until TEXT
+        );
         """)
 
 def _now() -> datetime:
@@ -80,10 +86,29 @@ def create_owner(username: str, password: str) -> tuple[dict, str]:
         return _public_user(row), token
 
 def login(username: str, password: str) -> tuple[dict, str] | None:
+    username_key = hashlib.sha256(username.strip().lower().encode()).hexdigest()
+    now = _now()
     with _connect() as conn:
+        attempt = conn.execute("SELECT attempts,window_started_at,locked_until FROM auth_login_attempts WHERE username_key=?", (username_key,)).fetchone()
+        if attempt and attempt["locked_until"] and attempt["locked_until"] > now.isoformat():
+            raise RuntimeError("Too many login attempts. Try again later.")
+        if attempt and (_now() - datetime.fromisoformat(attempt["window_started_at"])).total_seconds() > 900:
+            conn.execute("DELETE FROM auth_login_attempts WHERE username_key=?", (username_key,))
+            attempt = None
         row = conn.execute("SELECT id,username,password_hash,created_at FROM auth_users WHERE username=? COLLATE NOCASE",
                            (username.strip(),)).fetchone()
-        if not row or not _verify_password(password, row["password_hash"]): return None
+        if not row or not _verify_password(password, row["password_hash"]):
+            attempts = (attempt["attempts"] if attempt else 0) + 1
+            locked_until = (now + timedelta(minutes=15)).isoformat() if attempts >= 5 else None
+            conn.execute(
+                """INSERT INTO auth_login_attempts(username_key,attempts,window_started_at,locked_until)
+                VALUES(?,?,?,?) ON CONFLICT(username_key) DO UPDATE SET
+                attempts=excluded.attempts,window_started_at=excluded.window_started_at,
+                locked_until=excluded.locked_until""",
+                (username_key, attempts, attempt["window_started_at"] if attempt else now.isoformat(), locked_until),
+            )
+            return None
+        conn.execute("DELETE FROM auth_login_attempts WHERE username_key=?", (username_key,))
         now = _now()
         token = secrets.token_urlsafe(48)
         conn.execute("INSERT INTO auth_sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)",
