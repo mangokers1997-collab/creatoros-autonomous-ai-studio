@@ -1,14 +1,17 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from pathlib import Path
+from uuid import uuid4
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Literal
-from uuid import uuid4
-
 from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
 from app.database import research_create, research_list, research_get, research_source_create
-from app.database import content_package_list
+from app.database import content_package_list, media_asset_create, media_asset_get, media_asset_list
+from app.database import render_job_create, render_job_get, render_job_list
 from app.content_engine import generate_content_package
+from app.renderer import MEDIA_ROOT, RENDER_ROOT, ffmpeg_available, run_render_job
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -23,7 +26,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -60,6 +63,13 @@ class ResearchBriefCreate(BaseModel):
     keywords: str = Field(default="", max_length=1500, description="Comma-separated seed keywords")
     competitors: str = Field(default="", max_length=1500, description="Comma-separated competitor names or channels")
     notes: str = Field(default="", max_length=4000)
+
+
+class RenderRequest(BaseModel):
+    package_id: str
+    image_asset_id: str | None = None
+    audio_asset_id: str | None = None
+    duration_seconds: int = Field(default=48, ge=8, le=180)
 
 
 class ResearchSourceCreate(BaseModel):
@@ -176,13 +186,95 @@ def list_project_packages(project_id: str):
     return content_package_list(project_id)
 
 
+@app.post("/api/v1/assets/upload", status_code=201)
+async def upload_asset(file: UploadFile = File(...)):
+    content_type = (file.content_type or "").lower()
+    image_types = {"image/jpeg", "image/png", "image/webp"}
+    audio_types = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac", "audio/ogg"}
+    if content_type not in image_types | audio_types:
+        raise HTTPException(status_code=415, detail="Supported files: JPG, PNG, WEBP, MP3, WAV, AAC, M4A/MP4 audio, or OGG.")
+    data = await file.read(20 * 1024 * 1024 + 1)
+    if not data or len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File must be between 1 byte and 20 MB.")
+    media_type = "image" if content_type in image_types else "audio"
+    extension = Path(file.filename or "upload.bin").suffix.lower()
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".webp"} if media_type == "image" else {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".mp4"}
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=415, detail="File extension does not match supported media types.")
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid4()}{extension}"
+    (MEDIA_ROOT / stored_name).write_bytes(data)
+    return media_asset_create({
+        "original_name": (file.filename or "upload")[:255],
+        "stored_name": stored_name,
+        "media_type": media_type,
+        "mime_type": content_type,
+        "size_bytes": len(data),
+    })
+
+
+@app.get("/api/v1/assets")
+def list_assets():
+    return media_asset_list()
+
+
+@app.post("/api/v1/projects/{project_id}/render", status_code=202)
+def create_render(project_id: str, payload: RenderRequest, background_tasks: BackgroundTasks):
+    if not project_get(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    packages = content_package_list(project_id)
+    if not any(item["id"] == payload.package_id for item in packages):
+        raise HTTPException(status_code=404, detail="Content package not found for this project")
+    image = media_asset_get(payload.image_asset_id) if payload.image_asset_id else None
+    audio = media_asset_get(payload.audio_asset_id) if payload.audio_asset_id else None
+    if payload.image_asset_id and (not image or image["media_type"] != "image"):
+        raise HTTPException(status_code=400, detail="image_asset_id must reference an uploaded image")
+    if payload.audio_asset_id and (not audio or audio["media_type"] != "audio"):
+        raise HTTPException(status_code=400, detail="audio_asset_id must reference uploaded audio")
+    job = render_job_create({
+        "project_id": project_id,
+        "package_id": payload.package_id,
+        "image_asset_id": payload.image_asset_id,
+        "audio_asset_id": payload.audio_asset_id,
+        "duration_seconds": payload.duration_seconds,
+    })
+    background_tasks.add_task(run_render_job, job["id"])
+    return {**job, "ffmpeg_available": ffmpeg_available()}
+
+
+@app.get("/api/v1/renders")
+def list_renders(project_id: str | None = None, limit: int = Query(default=50, ge=1, le=200)):
+    return render_job_list(project_id=project_id, limit=limit)
+
+
+@app.get("/api/v1/renders/{job_id}")
+def get_render(job_id: str):
+    job = render_job_get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Render job not found")
+    return job
+
+
+@app.get("/api/v1/renders/{job_id}/download")
+def download_render(job_id: str):
+    job = render_job_get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Render job not found")
+    if job["status"] != "rendered" or not job["output_path"]:
+        raise HTTPException(status_code=409, detail="Render is not ready")
+    output = Path(job["output_path"]).resolve()
+    if RENDER_ROOT not in output.parents or not output.is_file():
+        raise HTTPException(status_code=404, detail="Rendered file not found")
+    return FileResponse(output, media_type="video/mp4", filename=f"creatoros-{job_id}.mp4")
+
+
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "content-intelligence-engine",
+        "phase": "local-video-rendering",
         "database": "sqlite",
         "ai_provider": "not_configured",
-        "render_engine": "not_configured",
+        "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
         "publishing": "disabled",
         "human_approval_required": True,
     }
