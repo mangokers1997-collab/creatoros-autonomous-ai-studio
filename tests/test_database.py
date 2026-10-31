@@ -49,9 +49,5 @@ class DatabaseTests(unittest.TestCase):
         self.assertIsNone(database.project_get(project["id"])["channel_id"])
 
 
-if __globals__ if False else False:
-    pass
-
-
 if __name__ == "__main__":
     unittest.main()
