@@ -164,7 +164,7 @@ class ResearchSourceCreate(BaseModel):
 
 @app.get("/")
 def root():
-    return {"name": "CreatorOS API", "version": "0.3.0", "docs": "/docs"}
+    return {"name": "CreatorOS API", "version": "1.2.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -675,10 +675,10 @@ def control_center():
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "multi-platform-publishing-metadata-validation",
+        "phase": "unified-control-center-api",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
-        "publishing": "approval_queue_ready_platform_adapters_not_configured",
+        "publishing": "youtube_oauth_adapter_and_opt_in_worker_foundation",
         "human_approval_required": True,
     }
