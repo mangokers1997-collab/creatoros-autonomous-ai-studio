@@ -51,3 +51,23 @@ class DatabaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProductionBatchListTests(unittest.TestCase):
+    def test_batch_list_includes_items_and_options(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from app import database
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path=Path(tmp)/"creatoros-test.db"
+            with patch.object(database,"DB_PATH",db_path):
+                database.init_db()
+                now="2026-01-01T00:00:00+00:00"
+                with database._connect() as conn:
+                    conn.execute("INSERT INTO strategy_plans(id,niche,market,language,start_date,days,videos_per_day,created_at) VALUES(?,?,?,?,?,?,?,?)",("strategy-test","finance","ID","id","2026-01-01",1,1,now))
+                batch=database.production_batch_create("strategy-test",[{"id":"strategy-item"}],{"render_video":True})
+                rows=database.production_batch_list()
+                self.assertEqual(rows[0]["id"],batch["id"])
+                self.assertEqual(len(rows[0]["items"]),1)
+                self.assertTrue(rows[0]["options"]["render_video"])
