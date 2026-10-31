@@ -34,6 +34,7 @@ from app.youtube_adapter import (
 )
 from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.control_center import get_control_center
+from app.script_engine import generate_script, list_scripts, get_script, update_script, delete_script
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -257,6 +258,25 @@ class PublishApprovalRequest(BaseModel):
     scheduled_at: str = Field(min_length=20, max_length=40)
 
 
+class ScriptGenerateRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=180)
+    niche: str = Field(default="general", min_length=2, max_length=80)
+    market: str = Field(default="ID", min_length=2, max_length=2)
+    language: Literal["id", "en", "ja", "ar"] = "id"
+    audience: str = Field(default="pemula", max_length=180)
+    format: Literal["short", "long"] = "short"
+    duration_seconds: int = Field(default=60, ge=15, le=1800)
+    style: Literal["educational", "storytelling", "motivational", "documentary"] = "storytelling"
+    structure: Literal["problem_solution", "plot_twist", "listicle", "myth_busting", "case_study"] = "plot_twist"
+    call_to_action: str = Field(default="Ikuti untuk konten berikutnya.", max_length=300)
+    source_notes: str = Field(default="", max_length=2000)
+
+
+class ScriptUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=180)
+    content: dict
+
+
 class ResearchSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     url: str = Field(default="", max_length=1000)
@@ -354,6 +374,42 @@ def add_research_source(brief_id: str, payload: ResearchSourceCreate):
     if not source:
         raise HTTPException(status_code=404, detail="Research brief not found")
     return source
+
+
+@app.post("/api/v1/scripts/generate", status_code=201)
+def create_generated_script(payload: ScriptGenerateRequest):
+    try:
+        return generate_script(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/scripts")
+def list_generated_scripts(limit: int = Query(default=50, ge=1, le=200)):
+    return list_scripts(limit=limit)
+
+
+@app.get("/api/v1/scripts/{script_id}")
+def get_generated_script(script_id: str):
+    script = get_script(script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return script
+
+
+@app.patch("/api/v1/scripts/{script_id}")
+def update_generated_script(script_id: str, payload: ScriptUpdateRequest):
+    script = update_script(script_id, payload.title, payload.content)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return script
+
+
+@app.delete("/api/v1/scripts/{script_id}")
+def delete_generated_script(script_id: str):
+    if not delete_script(script_id):
+        raise HTTPException(status_code=404, detail="Script not found")
+    return {"deleted": True, "id": script_id}
 
 
 @app.get("/api/v1/trends/markets")
