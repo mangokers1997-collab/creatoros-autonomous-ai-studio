@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
+from app.database import research_create, research_list, research_get, research_source_create
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -20,7 +21,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -47,9 +48,28 @@ class ProjectStatusUpdate(BaseModel):
     status: ProjectStatus
 
 
+class ResearchBriefCreate(BaseModel):
+    topic: str = Field(min_length=3, max_length=180)
+    niche: str = Field(default="general", max_length=80)
+    target_market: str = Field(default="US", min_length=2, max_length=40)
+    language: str = Field(default="en", min_length=2, max_length=12)
+    audience: str = Field(default="", max_length=300)
+    goal: str = Field(default="", max_length=300)
+    keywords: str = Field(default="", max_length=1500, description="Comma-separated seed keywords")
+    competitors: str = Field(default="", max_length=1500, description="Comma-separated competitor names or channels")
+    notes: str = Field(default="", max_length=4000)
+
+
+class ResearchSourceCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=200)
+    url: str = Field(default="", max_length=1000)
+    source_type: Literal["article", "video", "report", "forum", "other"] = "article"
+    observation: str = Field(default="", max_length=2000)
+
+
 @app.get("/")
 def root():
-    return {"name": "CreatorOS API", "version": "0.2.0", "docs": "/docs"}
+    return {"name": "CreatorOS API", "version": "0.3.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -109,10 +129,40 @@ def update_project_status(project_id: str, payload: ProjectStatusUpdate):
     return project
 
 
+@app.get("/api/v1/research")
+def list_research(
+    target_market: str | None = None,
+    niche: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return research_list(target_market=target_market, niche=niche, limit=limit)
+
+
+@app.post("/api/v1/research", status_code=201)
+def create_research(payload: ResearchBriefCreate):
+    return research_create(payload.model_dump())
+
+
+@app.get("/api/v1/research/{brief_id}")
+def get_research(brief_id: str):
+    brief = research_get(brief_id)
+    if not brief:
+        raise HTTPException(status_code=404, detail="Research brief not found")
+    return brief
+
+
+@app.post("/api/v1/research/{brief_id}/sources", status_code=201)
+def add_research_source(brief_id: str, payload: ResearchSourceCreate):
+    source = research_source_create(brief_id, payload.model_dump())
+    if not source:
+        raise HTTPException(status_code=404, detail="Research brief not found")
+    return source
+
+
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "database-and-content-workflow",
+        "phase": "research-workspace",
         "database": "sqlite",
         "ai_provider": "not_configured",
         "render_engine": "not_configured",
