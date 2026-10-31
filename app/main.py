@@ -14,6 +14,8 @@ from app.database import voice_job_create, voice_job_get, voice_job_list
 from app.content_engine import generate_content_package
 from app.renderer import MEDIA_ROOT, RENDER_ROOT, ffmpeg_available, run_render_job
 from app.voice_engine import piper_available, run_voice_job
+from app.database import trend_items_list
+from app.trend_engine import fetch_google_trends, MARKETS
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -28,7 +30,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.7.0",
+    version="0.8.0",
     lifespan=lifespan,
 )
 
@@ -75,6 +77,12 @@ class RenderRequest(BaseModel):
     scene_asset_ids: list[str | None] = Field(default_factory=list, max_length=12)
 
 
+class TrendRefreshRequest(BaseModel):
+    market: str = Field(default="US", min_length=2, max_length=2)
+    niche: str = Field(default="", max_length=80)
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+
+
 class ResearchSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     url: str = Field(default="", max_length=1000)
@@ -89,7 +97,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "0.7.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "0.8.0"}
 
 
 @app.get("/api/v1/channels")
@@ -172,6 +180,30 @@ def add_research_source(brief_id: str, payload: ResearchSourceCreate):
     if not source:
         raise HTTPException(status_code=404, detail="Research brief not found")
     return source
+
+
+@app.get("/api/v1/trends/markets")
+def list_trend_markets():
+    return [{"code": code, "name": name} for code, name in MARKETS.items()]
+
+
+@app.post("/api/v1/trends/refresh")
+def refresh_trends(payload: TrendRefreshRequest):
+    try:
+        return fetch_google_trends(payload.market, payload.niche, payload.keywords)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/v1/trends")
+def list_trends(
+    market: str | None = None,
+    niche: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return trend_items_list(market=market, niche=niche, limit=limit)
 
 
 @app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
@@ -346,7 +378,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "visual-story-engine",
+        "phase": "content-research-automation",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
