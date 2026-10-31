@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
+import secrets
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -68,12 +69,16 @@ class AuthCredentials(BaseModel):
     password: str = Field(min_length=12, max_length=128)
 
 
+class SetupCredentials(AuthCredentials):
+    bootstrap_token: str = Field(min_length=32, max_length=256)
+
+
 PUBLIC_AUTH_PATHS = {
     "/api/v1/auth/status", "/api/v1/auth/setup",
     "/api/v1/auth/login", "/api/v1/auth/logout",
     "/api/v1/oauth/youtube/callback",
 }
-PUBLIC_ROOT_PATHS = {"/"}
+PUBLIC_ROOT_PATHS = {"/", "/dashboard", "/dashboard/"}
 COOKIE_SECURE = __import__("os").getenv("CREATOROS_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
 
@@ -109,7 +114,10 @@ def auth_status():
 
 
 @app.post("/api/v1/auth/setup")
-def auth_setup(payload: AuthCredentials):
+def auth_setup(payload: SetupCredentials):
+    expected = __import__("os").getenv("CREATOROS_SETUP_TOKEN", "")
+    if len(expected) < 32 or not secrets.compare_digest(payload.bootstrap_token, expected):
+        raise HTTPException(status_code=403, detail="Invalid or missing first-run setup token.")
     try:
         user, token = create_owner(payload.username, payload.password)
     except RuntimeError as exc:
