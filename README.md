@@ -2,7 +2,7 @@
 
 Zero-budget-first workspace for planning, producing, reviewing, and publishing faceless content across multiple channels and target markets.
 
-## Current milestone: Keyword clustering and competitor discovery
+## Current milestone: Multi-market content strategy and calendar
 
 The FastAPI backend now includes SQLite persistence, channel management, content project creation, project filtering, and workflow status updates.
 
@@ -21,6 +21,30 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
+
+## AI Content Strategy Engine (30-day planner)
+
+Generate and persist a 1–90 day content calendar using saved trend items and saved intelligence reports, with an evergreen fallback when no research data exists. The MVP creates up to five short-form content briefs per day, each with a topic, angle, title, and localized hook. It can associate a plan with a channel. It is a deterministic planning engine, not an LLM or a performance prediction system.
+
+- `POST /api/v1/strategies/generate` — generate and save a calendar.
+- `GET /api/v1/strategies` — list saved plans.
+- `GET /api/v1/strategies/{plan_id}` — read a plan and all calendar items.
+- `PATCH /api/v1/strategy-items/{item_id}` — update an item's workflow status and optionally link a project.
+
+Example request:
+
+```json
+{
+  "market": "US",
+  "niche": "personal finance",
+  "language": "en",
+  "start_date": "2026-11-01",
+  "days": 30,
+  "videos_per_day": 1
+}
+```
+
+Supported strategy languages include English, Indonesian, Japanese, and Arabic. Topic sources are labeled in the plan summary. Validate all ideas and claims before production; the calendar does not promise reach, monetization, or revenue.
 
 ## Competitor & Keyword Intelligence (MVP)
 
@@ -119,6 +143,10 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | GET | `/api/v1/trends` | List stored trend signals |
 | POST | `/api/v1/intelligence/analyze` | Cluster keywords and optionally search public YouTube videos |
 | GET | `/api/v1/intelligence/reports` | List saved intelligence reports |
+| POST | `/api/v1/strategies/generate` | Generate and save a content calendar |
+| GET | `/api/v1/strategies` | List strategy plans |
+| GET | `/api/v1/strategies/{plan_id}` | Get plan and calendar items |
+| PATCH | `/api/v1/strategy-items/{item_id}` | Update a calendar item's status |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
 
