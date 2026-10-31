@@ -140,6 +140,20 @@ def init_db() -> None:
             FOREIGN KEY(audio_asset_id) REFERENCES media_assets(id)
         );
         CREATE INDEX IF NOT EXISTS idx_voice_jobs_status ON voice_jobs(status);
+        CREATE TABLE IF NOT EXISTS trend_items (
+            id TEXT PRIMARY KEY,
+            market TEXT NOT NULL,
+            title TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_url TEXT NOT NULL DEFAULT '',
+            traffic_label TEXT NOT NULL DEFAULT '',
+            published_at TEXT NOT NULL DEFAULT '',
+            niche TEXT NOT NULL DEFAULT '',
+            relevance_score REAL NOT NULL DEFAULT 0,
+            collected_at TEXT NOT NULL,
+            UNIQUE(market, title, source)
+        );
+        CREATE INDEX IF NOT EXISTS idx_trends_market_score ON trend_items(market, relevance_score DESC);
         """)
 
 
@@ -465,4 +479,39 @@ def render_scene_assets_list(job_id: str) -> list[dict]:
         return [dict(row) for row in conn.execute(
             "SELECT * FROM render_scene_assets WHERE render_job_id=? ORDER BY scene_index",
             (job_id,),
+        ).fetchall()]
+
+
+def trend_items_upsert(items: list[dict]) -> int:
+    if not items:
+        return 0
+    with _connect() as conn:
+        for item in items:
+            conn.execute(
+                """INSERT INTO trend_items
+                (id,market,title,source,source_url,traffic_label,published_at,niche,relevance_score,collected_at)
+                VALUES (:id,:market,:title,:source,:source_url,:traffic_label,:published_at,:niche,:relevance_score,:collected_at)
+                ON CONFLICT(market,title,source) DO UPDATE SET
+                source_url=excluded.source_url, traffic_label=excluded.traffic_label,
+                published_at=excluded.published_at, niche=excluded.niche,
+                relevance_score=excluded.relevance_score, collected_at=excluded.collected_at""",
+                item,
+            )
+    return len(items)
+
+
+def trend_items_list(market: str | None = None, niche: str | None = None, limit: int = 100) -> list[dict]:
+    clauses, params = [], []
+    if market:
+        clauses.append("market=?")
+        params.append(market)
+    if niche:
+        clauses.append("niche=?")
+        params.append(niche)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            f"SELECT * FROM trend_items{where} ORDER BY relevance_score DESC, collected_at DESC LIMIT ?",
+            params,
         ).fetchall()]
