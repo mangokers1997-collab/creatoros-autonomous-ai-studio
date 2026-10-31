@@ -59,6 +59,36 @@ The app should not be considered production-audited. This MVP does not yet inclu
 - `POST /api/v1/auth/logout` — revoke the current session.
 - `GET /api/v1/auth/me` — current authenticated owner.
 
+## Content intelligence research lab
+
+The dashboard includes a **Research lab** page for multi-market trend collection and content-opportunity analysis.
+
+### Supported markets
+
+United States (US), United Kingdom (GB), Canada (CA), Australia (AU), Japan (JP), United Arab Emirates (AE), India (IN), and Indonesia (ID).
+
+### Workflow
+
+1. Open `/dashboard/` and sign in.
+2. Select a target market, language, niche, and seed keywords.
+3. Select **Collect market trends** to retrieve that market's Google Trends RSS feed and save the results in SQLite.
+4. Select **Analyze opportunities** to cluster seed keywords with saved trend titles, rank text-match signals, suggest content angles, and save a report.
+5. Optionally provide up to five competitor search phrases. Set `YOUTUBE_DATA_API_KEY` in the private server environment to enable public YouTube video search examples for those phrases.
+
+The Research lab calls the existing endpoints:
+- `POST /api/v1/trends/refresh`
+- `GET /api/v1/trends`
+- `POST /api/v1/intelligence/analyze`
+- `GET /api/v1/intelligence/reports`
+
+### Interpretation and limits
+
+- Trend traffic labels are approximate values supplied by the feed, not verified search volume, ad rates, RPM, purchase intent, or predicted views.
+- Keyword opportunity scores are transparent heuristic text-match scores. They are not keyword difficulty, search-volume estimates, or revenue forecasts.
+- YouTube competitor examples are public search results, not complete channel analytics or a competitor audit. The YouTube API key is optional; without it, seed and saved trend keyword clustering still works.
+- The research process does not guarantee virality, advertiser suitability, YouTube monetization, or earnings. Fact-check claims, respect media rights, and add original insight before publishing.
+- The app does not scrape private accounts or bypass platform access controls.
+
 ## Web Control Center (frontend MVP)
 
 A responsive single-page dashboard is available at `web/index.html` and is served by FastAPI at:
