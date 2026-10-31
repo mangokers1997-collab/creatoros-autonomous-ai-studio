@@ -2,7 +2,7 @@
 
 Zero-budget-first workspace for planning, producing, reviewing, and publishing faceless content across multiple channels and target markets.
 
-## Current milestone: Public trend ingestion and topic scoring
+## Current milestone: Keyword clustering and competitor discovery
 
 The FastAPI backend now includes SQLite persistence, channel management, content project creation, project filtering, and workflow status updates.
 
@@ -21,6 +21,27 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
+
+## Competitor & Keyword Intelligence (MVP)
+
+The intelligence endpoint clusters seed keywords with saved Google Trends titles and creates a prioritized idea list using transparent text heuristics. It can optionally query public YouTube video search results by market when `YOUTUBE_DATA_API_KEY` is configured. No API key is required for clustering saved trends and seed terms.
+
+- `POST /api/v1/intelligence/analyze` — create and save an intelligence report.
+- `GET /api/v1/intelligence/reports?market=US&niche=personal%20finance` — list saved reports.
+
+Example request:
+
+```json
+{
+  "market": "US",
+  "niche": "personal finance",
+  "language": "en",
+  "seed_keywords": ["budgeting", "saving money", "credit score"],
+  "competitor_queries": ["personal finance for beginners", "budgeting tips"]
+}
+```
+
+Set `YOUTUBE_DATA_API_KEY` in the server environment to enable optional public video search. The YouTube Data API has quota limits; keep query counts small and never commit the key. Search results are samples, not a complete channel audit. This MVP does not calculate keyword volume, difficulty, CPM, RPM, or estimated revenue. Scores are heuristic prioritization aids, not market facts.
 
 ## Content Research Automation (free RSS MVP)
 
@@ -96,6 +117,8 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | GET | `/api/v1/trends/markets` | List supported trend markets |
 | POST | `/api/v1/trends/refresh` | Fetch and store a public RSS trend feed |
 | GET | `/api/v1/trends` | List stored trend signals |
+| POST | `/api/v1/intelligence/analyze` | Cluster keywords and optionally search public YouTube videos |
+| GET | `/api/v1/intelligence/reports` | List saved intelligence reports |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
 
@@ -123,4 +146,4 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 
 ## Current limitations
 
-This is an early backend. LLM-based generation, advanced trend enrichment, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, keyword volume, difficulty, and advanced competitor enrichment, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
