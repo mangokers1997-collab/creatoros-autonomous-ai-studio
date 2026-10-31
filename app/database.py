@@ -1166,6 +1166,11 @@ def experiment_evaluate(experiment_id: str, minimum_views: int = 100) -> dict | 
 
 
 def experiment_promote_winner(experiment_id: str, variant_id: str) -> dict | None:
+    evaluation = experiment_evaluate(experiment_id, minimum_views=100)
+    if not evaluation:
+        return None
+    if evaluation["status"] != "winner_found" or evaluation["winner"]["id"] != variant_id:
+        raise ValueError("Only an evaluated directional winner with sufficient views can be promoted.")
     now = _now()
     with _connect() as conn:
         exp = _dict(conn.execute("SELECT * FROM content_experiments WHERE id=?", (experiment_id,)).fetchone())
