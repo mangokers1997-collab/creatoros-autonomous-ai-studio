@@ -271,7 +271,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "1.2.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "1.4.0"}
 
 
 @app.get("/api/v1/channels")
