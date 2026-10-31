@@ -6,6 +6,7 @@ import os
 from app.database import (
     channel_get, project_get, render_job_get,
     publish_job_create, publish_job_get, publish_job_list, publish_job_update,
+    publish_job_retry,
 )
 
 
@@ -43,7 +44,7 @@ def approve_publish_job(job_id: str, scheduled_at: str) -> dict | None:
         raise ValueError("scheduled_at must include a timezone offset.")
     if parsed <= datetime.now(timezone.utc):
         raise ValueError("scheduled_at must be in the future.")
-    return publish_job_update(job_id, "scheduled", scheduled_at=parsed.isoformat(),
+    return publish_job_update(job_id, "scheduled", scheduled_at=parsed.astimezone(timezone.utc).isoformat(),
                               approved_at=datetime.now(timezone.utc).isoformat())
 
 
@@ -77,3 +78,15 @@ def publishing_adapter_status() -> dict:
         "facebook": {"implemented": False, "reason": "Meta app review, permissions, and account connection are not configured."},
         "tiktok": {"implemented": False, "reason": "TikTok Content Posting API approval and creator authorization are not configured."},
     }
+
+
+def retry_publish_job(job_id: str, scheduled_at: str) -> dict | None:
+    try:
+        parsed = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("scheduled_at must be ISO 8601 with a timezone.") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("scheduled_at must include a timezone offset.")
+    if parsed <= datetime.now(timezone.utc):
+        raise ValueError("Retry time must be in the future.")
+    return publish_job_retry(job_id, parsed.astimezone(timezone.utc).isoformat())
