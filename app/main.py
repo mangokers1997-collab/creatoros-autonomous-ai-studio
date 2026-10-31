@@ -24,6 +24,7 @@ from app.publishing_engine import (
     create_publish_draft, approve_publish_job, cancel_publish_job,
     list_publish_jobs, get_publish_job, publishing_adapter_status,
 )
+from app.platform_validation import validate_publish_metadata
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -120,6 +121,12 @@ class ProductionBatchRequest(BaseModel):
     generate_voice: bool = True
     render_video: bool = True
     duration_seconds: int = Field(default=48, ge=8, le=180)
+
+
+class PublishMetadataValidationRequest(BaseModel):
+    platform: ChannelPlatform
+    title: str = Field(default="", max_length=1000)
+    caption: str = Field(default="", max_length=70000)
 
 
 class PublishDraftRequest(BaseModel):
@@ -362,6 +369,11 @@ def retry_production_item(item_id: str, background_tasks: BackgroundTasks):
     return batch
 
 
+@app.post("/api/v1/publishing/validate-metadata")
+def validate_publishing_metadata(payload: PublishMetadataValidationRequest):
+    return validate_publish_metadata(payload.platform, payload.title, payload.caption)
+
+
 @app.post("/api/v1/publishing/drafts", status_code=201)
 def create_publishing_draft(payload: PublishDraftRequest):
     try:
@@ -586,7 +598,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "publishing-queue-and-scheduling-foundation",
+        "phase": "multi-platform-publishing-metadata-validation",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
