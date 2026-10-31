@@ -55,7 +55,8 @@ def run_job(jid):
     label=str(scene.get("on_screen_text") or scene.get("purpose") or "").replace("\\"," ").replace("'","’").replace(":"," - ").replace("%"," percent")[:100]
     if label:
      filters.append(f"drawtext=text='{label}':fontcolor=white:fontsize=52:line_spacing=10:box=1:boxcolor=black@0.48:boxborderw=22:x=(w-text_w)/2:y=h*0.22:enable='between(t,{start:.2f},{end:.2f})'")
-   filters.append(f"subtitles='{str(sub).replace(chr(92),'/').replace(':',r'\\:')}'")
+   sub_filter_path=str(sub).replace("\\","/").replace(":","\\:")
+   filters.append(f"subtitles='{sub_filter_path}'")
    vf=",".join(filters)+",format=yuv420p"
    cmd=["ffmpeg","-y","-hide_banner","-loglevel","error","-f","lavfi","-i",f"color=c=0x172033:s=1080x1920:r=30:d={duration}","-i",str(audio),"-vf",vf,"-map","0:v:0","-map","1:a:0","-shortest","-r","30","-c:v","libx264","-preset","veryfast","-crf","25","-c:a","aac","-b:a","128k","-movflags","+faststart",str(output)]
    done=subprocess.run(cmd,capture_output=True,text=True,timeout=900,check=False)
