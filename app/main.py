@@ -30,6 +30,7 @@ from app.youtube_adapter import (
     youtube_connection_status, upload_youtube_video,
 )
 from app.publishing_worker import start_worker, stop_worker, worker_status
+from app.control_center import get_control_center
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -664,6 +665,11 @@ def download_render(job_id: str):
     if RENDER_ROOT not in output.parents or not output.is_file():
         raise HTTPException(status_code=404, detail="Rendered file not found")
     return FileResponse(output, media_type="video/mp4", filename=f"creatoros-{job_id}.mp4")
+
+
+@app.get("/api/v1/control-center")
+def control_center():
+    return get_control_center()
 
 
 @app.get("/api/v1/system/status")
