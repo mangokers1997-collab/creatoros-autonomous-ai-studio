@@ -485,3 +485,16 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 ## Current limitations
 
 This is an early backend. LLM-based generation, keyword volume, difficulty, and advanced competitor enrichment, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
+
+
+## Script Studio — free storytelling engine
+
+The Script Studio API creates and saves structured drafts without requiring a paid AI API:
+- POST /api/v1/scripts/generate — generate a scene-by-scene draft.
+- GET /api/v1/scripts and GET /api/v1/scripts/{id} — list and retrieve saved scripts.
+- PATCH /api/v1/scripts/{id} — update a saved title and content.
+- DELETE /api/v1/scripts/{id} — delete a saved draft.
+
+Inputs include topic, niche, market, language (Indonesian, English, Japanese, Arabic), audience, short/long format, duration, tone, narrative structure, CTA, and source notes. Output includes hook, outline, scene timing, voiceover, on-screen text, visual direction, caption, hashtags, production notes, and a fact-check checklist.
+
+Important limitation: the current engine is a deterministic template-based fallback, not a hosted generative AI model. Review and rewrite every draft, verify claims, check translations, and use licensed media. No guarantee of originality, retention, monetization, or earnings.
