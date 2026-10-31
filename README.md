@@ -550,3 +550,8 @@ The Production page can load saved strategy plans, start a batch of up to five p
 ## Publishing Center — draft review and scheduling
 
 The Publishing page can create a draft from an approved/rendered project and its completed render, validate title/caption length against the selected channel platform, and display queued jobs. A human can approve a draft with a future ISO-8601 schedule time or cancel it. Creating a draft does not publish it. Actual publishing remains dependent on provider OAuth, app permissions, adapter readiness, and worker configuration; Instagram, Facebook, and TikTok are not yet implemented as upload adapters. The current draft flow uses the standard project render jobs, not Script Studio's separate script-video job records.
+
+
+## Analytics & Revenue Intelligence
+
+The Analytics page stores dated channel metric snapshots: views, watch time, likes, comments, shares, subscriber gains/losses, and reported revenue. Use `POST /api/v1/analytics/metrics` to add a snapshot, `GET /api/v1/analytics/metrics` to inspect records, and `GET /api/v1/analytics/summary` for aggregated channel and account totals. Data entry is manual/import/API-source labelled; this milestone does not yet sync metrics automatically from YouTube, Meta, or TikTok. Revenue is recorded as reported and is not an RPM forecast. Totals are not combined across currencies; if more than one currency is present, the overall revenue amount is omitted. Engagement rate is (likes + comments + shares) / views.
