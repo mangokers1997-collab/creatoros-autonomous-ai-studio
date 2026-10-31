@@ -533,3 +533,10 @@ Use only images you own or have permission to use. This is a still-image slidesh
 Video Studio now offers `GET /api/v1/scripts/{id}/visual-prompts`, which creates a reusable character reference and one 9:16 prompt per storyboard scene. These are prompt texts only; they do not generate images or call a paid provider. Use them with a locally hosted image model if available and verify its model/output license.
 
 Video rendering accepts `motion_preset`: `cinematic` (alternating gentle zoom/pan), `gentle_zoom`, `pan_left`, `pan_right`, or `static`. FFmpeg applies Ken Burns-style movement to uploaded still images. This is camera motion on still images, not character animation or AI video generation. Existing jobs are migrated with a default `cinematic` preset.
+
+
+## Video Quality Control
+
+Video Studio exposes `GET /api/v1/script-video-jobs/{job_id}/quality`. The checker uses FFprobe to inspect MP4 readability, file size, portrait 1080×1920 dimensions, H.264 video, audio presence, duration, and availability of the source SRT. A script-duration comparison is advisory. The dashboard can display the report next to a completed render.
+
+Install FFmpeg with FFprobe on the server. Automated metadata checks cannot assess story quality, factual accuracy, image licensing, caption legibility, or whether subtitles are actually readable on screen. Always preview the entire MP4 and approve it manually before publishing.
