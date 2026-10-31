@@ -87,7 +87,63 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 Open `http://127.0.0.1:8000/dashboard/`. On Windows, activate the environment with `.venv\\Scripts\\activate`. Install FFmpeg and Piper separately if local rendering and voice generation are required.
 
-This is a functional frontend MVP, not a production-secured public service. The API currently has no user authentication or role management; do not expose it to the public internet until authentication, HTTPS, CORS/origin policy, rate limits, and secret management are configured. The UI does not yet provide a complete video approval editor, calendar drag-and-drop, analytics from platform insights, or Instagram/Facebook/TikTok account connections.
+This is a functional frontend MVP. The API now has single-owner authentication, but it has not undergone an independent security audit. Do not expose it directly to the public internet; use HTTPS through a trusted reverse proxy, keep the application port private, configure secrets, and maintain backups. The UI does not yet provide a complete video approval editor, calendar drag-and-drop, analytics from platform insights, or Instagram/Facebook/TikTok account connections.
+
+## Docker deployment (self-hosted)
+
+The repository includes a Docker image and Compose configuration. The container installs FFmpeg, runs as a non-root user, stores mutable data in a persistent named volume, and binds the application port to localhost by default.
+
+### Start on a Linux server
+
+```bash
+cp .env.docker.example .env
+```
+
+Edit `.env` and set:
+- `CREATOROS_SETUP_TOKEN` — random secret of at least 32 characters for first owner setup.
+- `CREATOROS_FERNET_KEY` — generate with the command in the environment template.
+- `CREATOROS_OAUTH_STATE_SECRET` — a separate random secret.
+- YouTube OAuth client values only if you plan to connect YouTube.
+
+Generate the random values locally; do not commit the resulting `.env` file.
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f creatoros
+```
+
+Open `http://127.0.0.1:8000/dashboard/` on the server itself, or put a trusted HTTPS reverse proxy in front of the localhost-bound service. For remote access, configure the proxy's external URL and set `CREATOROS_COOKIE_SECURE=true` in `.env`, then restart with `docker compose up -d`. Never expose port 8000 directly to the public internet. Set the YouTube redirect URI in Google Cloud to the exact HTTPS callback URL of your deployment.
+
+The health endpoint `/health` is intentionally public for container health checks; application APIs and documentation remain protected by the owner session.
+
+### Persistent data and backup
+
+Docker Compose stores the SQLite database, media, rendered videos, and encrypted OAuth token files in the `creatoros_data` named volume mounted at `/data`.
+
+Create a consistent database backup:
+
+```bash
+sh scripts/backup.sh
+```
+
+Restore a database backup during a maintenance window:
+
+```bash
+docker compose stop creatoros
+sh scripts/restore.sh backups/creatoros-YYYYMMDDTHHMMSSZ.db
+docker compose start creatoros
+```
+
+The database backup does not include uploaded media or encrypted OAuth token files. Back up the entire `creatoros_data` volume separately using a trusted host-level volume backup process, encrypt backups, and store them off-server. The Fernet key in `.env` must be preserved separately: encrypted tokens cannot be recovered without it. Test restore procedures before relying on them.
+
+### Operational notes
+
+- `docker compose down` keeps the named volume; `docker compose down -v` deletes it and permanently removes stored app data.
+- The publishing worker remains disabled by default. Keep it disabled until platform OAuth and a manual upload have been tested.
+- Piper TTS is not installed in this image; configure a compatible local Piper binary and voice model separately if needed.
+- This is a self-hosted deployment foundation, not a free managed cloud host. The server, storage, domain, and HTTPS infrastructure may incur costs.
+- The container build is checked in GitHub Actions; successful image compilation does not replace a live deployment test or a security audit.
 
 ## CreatorOS Control Center API
 
