@@ -22,6 +22,24 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Multi-platform Publishing Metadata Validation
+
+Before a post is placed in the publishing queue, CreatorOS can validate basic title and caption lengths against platform-specific limits for YouTube, Instagram, Facebook, and TikTok.
+
+- `POST /api/v1/publishing/validate-metadata` — validate platform, title, and caption metadata.
+
+Example:
+
+```json
+{
+  "platform": "youtube",
+  "title": "A practical budgeting guide",
+  "caption": "Three steps to build a realistic monthly budget."
+}
+```
+
+This is metadata validation only. It does not connect accounts, upload media, guarantee platform acceptance, or replace checking current platform policies.
+
 ## Publishing Queue & Scheduling Foundation (MVP)
 
 Create a publishing draft linked to a channel, approved project, and completed rendered video. Drafts enter `awaiting_approval`; a human must approve them with an ISO-8601 future timestamp that includes a timezone. The queue persists schedule metadata and supports filtering, inspection, approval, and cancellation. This release does **not** upload to social platforms yet; adapter status reports the missing OAuth/app-review prerequisites honestly.
@@ -187,6 +205,7 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | GET | `/api/v1/production-batches` | List production batches |
 | GET | `/api/v1/production-batches/{batch_id}` | Get batch progress and item details |
 | POST | `/api/v1/production-batch-items/{item_id}/retry` | Retry a failed production item |
+| POST | `/api/v1/publishing/validate-metadata` | Validate title and caption lengths per platform |
 | POST | `/api/v1/publishing/drafts` | Create a publishing draft linked to a rendered video |
 | GET | `/api/v1/publishing/jobs` | List publishing queue items |
 | GET | `/api/v1/publishing/jobs/{job_id}` | Get a publishing job |
