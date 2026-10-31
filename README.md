@@ -555,3 +555,8 @@ The Publishing page can create a draft from an approved/rendered project and its
 ## Analytics & Revenue Intelligence
 
 The Analytics page stores dated channel metric snapshots: views, watch time, likes, comments, shares, subscriber gains/losses, and reported revenue. Use `POST /api/v1/analytics/metrics` to add a snapshot, `GET /api/v1/analytics/metrics` to inspect records, and `GET /api/v1/analytics/summary` for aggregated channel and account totals. Data entry is manual/import/API-source labelled; this milestone does not yet sync metrics automatically from YouTube, Meta, or TikTok. Revenue is recorded as reported and is not an RPM forecast. Totals are not combined across currencies; if more than one currency is present, the overall revenue amount is omitted. Engagement rate is (likes + comments + shares) / views.
+
+
+## AI Performance Optimization (Stage 31)
+
+The Analytics page includes an evidence-aware optimization report at `GET /api/v1/analytics/optimization` (optional `channel_id`). It ranks published videos, summarizes performance by format and niche, and suggests controlled experiments. To include a video's metrics, select its published job when recording a metric at `POST /api/v1/analytics/metrics`; unlinked records remain in account totals but are excluded from per-video recommendations. The engine uses deterministic rules and recorded data, not a paid AI model. It flags small samples and avoids claiming that correlation proves causation. Collect comparable post-publication measurement windows before making major strategy changes. It does not automatically rewrite or publish content.
