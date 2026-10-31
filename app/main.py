@@ -36,6 +36,7 @@ from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.control_center import get_control_center
 from app.script_engine import generate_script, list_scripts, get_script, update_script, delete_script
 from app.script_voice_engine import available as script_voice_available, create_job as create_script_voice_job, get_job as get_script_voice_job, list_jobs as list_script_voice_jobs, run_job as run_script_voice_job, audio_path as script_voice_audio_path
+from app.script_video_engine import create_job as create_script_video_job, get_job as get_script_video_job, list_jobs as list_script_video_jobs, run_job as run_script_video_job, video_path as script_video_path
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -457,6 +458,41 @@ def download_script_voice_subtitles(job_id: str):
     from fastapi.responses import Response
     return Response(content=job["subtitles_srt"], media_type="application/x-subrip",
         headers={"Content-Disposition": f'attachment; filename="creatoros-script-{job_id}.srt"'})
+
+
+
+@app.post("/api/v1/scripts/{script_id}/video", status_code=202)
+def create_script_video(script_id: str, payload: dict, background_tasks: BackgroundTasks):
+    voice_job_id = str(payload.get("voice_job_id", ""))
+    job = create_script_video_job(script_id, voice_job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Matching saved script and completed voice job are required")
+    background_tasks.add_task(run_script_video_job, job["id"])
+    return {**job, "ffmpeg_available": ffmpeg_available()}
+
+
+@app.get("/api/v1/script-video-jobs")
+def list_script_video_jobs(limit: int = Query(default=50, ge=1, le=200)):
+    return list_script_video_jobs(limit)
+
+
+@app.get("/api/v1/script-video-jobs/{job_id}")
+def get_script_video_job(job_id: str):
+    job = get_script_video_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Video job not found")
+    return job
+
+
+@app.get("/api/v1/script-video-jobs/{job_id}/download")
+def download_script_video(job_id: str):
+    job = get_script_video_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Video job not found")
+    path = script_video_path(job_id)
+    if not path:
+        raise HTTPException(status_code=409 if job["status"] != "ready" else 404, detail="Video is not ready or file is missing")
+    return FileResponse(path, media_type="video/mp4", filename=f"creatoros-{job_id}.mp4")
 
 
 @app.get("/api/v1/trends/markets")
