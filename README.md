@@ -565,3 +565,10 @@ The Analytics page includes an evidence-aware optimization report at `GET /api/v
 ## Strategy Experiments (Stage 32)
 
 The Experiments workspace supports controlled, manual A/B comparisons for title and hook variants attached to a planned strategy item. Create an experiment with a written hypothesis, record comparable variant metrics, and evaluate only after each variant reaches the configured minimum views (default 100). The current directional evaluator compares engagement rate and average watch time and deliberately avoids claiming statistical significance. A winner can be promoted back to the strategy item only after evaluation; promotion does not create a project, approve a publishing draft, or publish content. Metrics are entered manually in this milestone. Use similar audiences, traffic sources, and post-publication measurement windows to reduce bias.
+
+
+## Autonomous Content Intelligence Brain (Stage 33)
+
+The Content Brain combines previously collected trend feed items, saved Content Intelligence reports, linked published-video metrics, and saved strategy history into a prioritized topic shortlist. It filters close duplicates against existing strategy topics for the selected market and niche, assigns transparent heuristic priority scores, and drafts a strategy calendar. Use `POST /api/v1/content-brain/analyze` for recommendations and `POST /api/v1/content-brain/strategy` to create a saved strategy plan. The dashboard is available under **Content Brain**.
+
+Scoring is directional, not a forecast of views, revenue, or virality. Performance history is a weak channel-level signal and does not prove that a topic caused an outcome. The engine can only use trends and research reports already collected; it does not promise live research refresh in this analysis request. Draft plans require human review for accuracy, originality, audience fit, and media rights. No content is automatically produced, approved, or published by this feature.
