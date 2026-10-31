@@ -560,3 +560,8 @@ The Analytics page stores dated channel metric snapshots: views, watch time, lik
 ## AI Performance Optimization (Stage 31)
 
 The Analytics page includes an evidence-aware optimization report at `GET /api/v1/analytics/optimization` (optional `channel_id`). It ranks published videos, summarizes performance by format and niche, and suggests controlled experiments. To include a video's metrics, select its published job when recording a metric at `POST /api/v1/analytics/metrics`; unlinked records remain in account totals but are excluded from per-video recommendations. The engine uses deterministic rules and recorded data, not a paid AI model. It flags small samples and avoids claiming that correlation proves causation. Collect comparable post-publication measurement windows before making major strategy changes. It does not automatically rewrite or publish content.
+
+
+## Strategy Experiments (Stage 32)
+
+The Experiments workspace supports controlled, manual A/B comparisons for title and hook variants attached to a planned strategy item. Create an experiment with a written hypothesis, record comparable variant metrics, and evaluate only after each variant reaches the configured minimum views (default 100). The current directional evaluator compares engagement rate and average watch time and deliberately avoids claiming statistical significance. A winner can be promoted back to the strategy item only after evaluation; promotion does not create a project, approve a publishing draft, or publish content. Metrics are entered manually in this milestone. Use similar audiences, traffic sources, and post-publication measurement windows to reduce bias.
