@@ -955,7 +955,7 @@ def system_status():
 class ChannelMetricCreate(BaseModel):
     channel_id: str = Field(min_length=1, max_length=80)
     publish_job_id: str | None = Field(default=None, max_length=80)
-    metric_date: str = Field(min_length=10, max_length=10, pattern=r"^\\d{4}-\\d{2}-\\d{2}$")
+    metric_date: str = Field(min_length=10, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
     views: int = Field(default=0, ge=0, le=2_000_000_000)
     watch_time_minutes: float = Field(default=0, ge=0, le=1_000_000_000)
     likes: int = Field(default=0, ge=0, le=2_000_000_000)
