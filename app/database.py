@@ -251,6 +251,18 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_publish_schedule ON publish_jobs(status,scheduled_at);
         CREATE INDEX IF NOT EXISTS idx_publish_channel ON publish_jobs(channel_id,created_at);
+        CREATE TABLE IF NOT EXISTS channel_metrics (
+            id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, publish_job_id TEXT,
+            metric_date TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0,
+            watch_time_minutes REAL NOT NULL DEFAULT 0, likes INTEGER NOT NULL DEFAULT 0,
+            comments INTEGER NOT NULL DEFAULT 0, shares INTEGER NOT NULL DEFAULT 0,
+            subscribers_gained INTEGER NOT NULL DEFAULT 0, revenue_amount REAL NOT NULL DEFAULT 0,
+            revenue_currency TEXT NOT NULL DEFAULT 'USD', source TEXT NOT NULL DEFAULT 'manual',
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+            FOREIGN KEY(publish_job_id) REFERENCES publish_jobs(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_channel_metrics_date ON channel_metrics(channel_id,metric_date);
         CREATE TABLE IF NOT EXISTS oauth_states (
             state TEXT PRIMARY KEY,
             channel_id TEXT NOT NULL,
@@ -953,3 +965,39 @@ def publish_job_retry(job_id: str, scheduled_at: str) -> dict | None:
         if not cur.rowcount:
             return None
         return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def channel_metric_create(data: dict) -> dict:
+    item = {"id": str(uuid4()), **data, "created_at": _now()}
+    with _connect() as conn:
+        conn.execute("""INSERT INTO channel_metrics
+        (id,channel_id,publish_job_id,metric_date,views,watch_time_minutes,likes,comments,shares,subscribers_gained,revenue_amount,revenue_currency,source,notes,created_at)
+        VALUES (:id,:channel_id,:publish_job_id,:metric_date,:views,:watch_time_minutes,:likes,:comments,:shares,:subscribers_gained,:revenue_amount,:revenue_currency,:source,:notes,:created_at)""", item)
+    return item
+
+
+def channel_metric_list(channel_id: str | None = None, limit: int = 500) -> list[dict]:
+    with _connect() as conn:
+        query = "SELECT * FROM channel_metrics"
+        params = ()
+        if channel_id:
+            query += " WHERE channel_id=?"
+            params = (channel_id,)
+        query += " ORDER BY metric_date DESC,created_at DESC LIMIT ?"
+        return [dict(row) for row in conn.execute(query, params + (limit,)).fetchall()]
+
+
+def channel_analytics_summary(channel_id: str | None = None) -> dict:
+    where = " WHERE channel_id=?" if channel_id else ""
+    params = (channel_id,) if channel_id else ()
+    with _connect() as conn:
+        totals = conn.execute("SELECT COUNT(*) AS records,COALESCE(SUM(views),0) AS views,COALESCE(SUM(watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(likes),0) AS likes,COALESCE(SUM(comments),0) AS comments,COALESCE(SUM(shares),0) AS shares,COALESCE(SUM(subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(revenue_amount),0) AS revenue_amount FROM channel_metrics"+where,params).fetchone()
+        groups = conn.execute("SELECT c.id AS channel_id,c.name AS channel_name,c.platform,c.target_market,COUNT(m.id) AS records,COALESCE(SUM(m.views),0) AS views,COALESCE(SUM(m.watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(m.likes),0) AS likes,COALESCE(SUM(m.comments),0) AS comments,COALESCE(SUM(m.shares),0) AS shares,COALESCE(SUM(m.subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(m.revenue_amount),0) AS revenue_amount,MAX(m.revenue_currency) AS revenue_currency FROM channels c LEFT JOIN channel_metrics m ON m.channel_id=c.id"+(" WHERE c.id=?" if channel_id else "")+" GROUP BY c.id ORDER BY views DESC",([channel_id] if channel_id else [])).fetchall()
+        daily = conn.execute("SELECT metric_date,COALESCE(SUM(views),0) AS views,COALESCE(SUM(watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(likes),0) AS likes,COALESCE(SUM(comments),0) AS comments,COALESCE(SUM(shares),0) AS shares,COALESCE(SUM(subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(revenue_amount),0) AS revenue_amount FROM channel_metrics"+where+" GROUP BY metric_date ORDER BY metric_date DESC LIMIT 90",params).fetchall()
+    result = dict(totals)
+    engagement = result["likes"] + result["comments"] + result["shares"]
+    result["engagements"] = engagement
+    result["engagement_rate"] = round(engagement / result["views"] * 100, 2) if result["views"] else 0
+    currencies = {row["revenue_currency"] for row in groups if row["revenue_amount"]}
+    result["revenue_currency"] = next(iter(currencies)) if len(currencies) == 1 else ("mixed" if currencies else None)
+    return {"totals": result, "channels": [dict(row) for row in groups], "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": True}
