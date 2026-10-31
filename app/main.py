@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Literal
-from app.auth import (SESSION_COOKIE, create_owner, get_session, init_auth_tables, login as auth_login, owner_exists, revoke_session)
+from app.auth import (SESSION_COOKIE, SESSION_DAYS, create_owner, get_session, init_auth_tables, login as auth_login, owner_exists, revoke_session)
 from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
 from app.database import research_create, research_list, research_get, research_source_create
@@ -71,6 +71,7 @@ class AuthCredentials(BaseModel):
 PUBLIC_AUTH_PATHS = {
     "/api/v1/auth/status", "/api/v1/auth/setup",
     "/api/v1/auth/login", "/api/v1/auth/logout",
+    "/api/v1/oauth/youtube/callback",
 }
 PUBLIC_ROOT_PATHS = {"/"}
 COOKIE_SECURE = __import__("os").getenv("CREATOROS_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
@@ -98,7 +99,7 @@ async def require_authenticated_session(request: Request, call_next):
 def _set_session_cookie(response: JSONResponse, token: str) -> None:
     response.set_cookie(
         key=SESSION_COOKIE, value=token, httponly=True, secure=COOKIE_SECURE,
-        samesite="strict", max_age=7 * 24 * 60 * 60, path="/",
+        samesite="strict", max_age=SESSION_DAYS * 24 * 60 * 60, path="/",
     )
 
 
