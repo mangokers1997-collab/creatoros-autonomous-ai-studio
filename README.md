@@ -22,6 +22,36 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Web Control Center (frontend MVP)
+
+A responsive single-page dashboard is available at `web/index.html` and is served by FastAPI at:
+
+- `/dashboard/` — CreatorOS Control Center.
+- `/api/v1/control-center` — aggregated dashboard data.
+- `/docs` — interactive API documentation.
+
+The frontend currently supports:
+- Overview cards for channel, project, render, and published counts.
+- Channel list and channel creation/deletion.
+- Project list and project creation.
+- Publishing queue view.
+- Production status summaries and runtime/adapter health.
+- Automatic dashboard refresh every 45 seconds.
+
+### Run locally
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000/dashboard/`. On Windows, activate the environment with `.venv\\Scripts\\activate`. Install FFmpeg and Piper separately if local rendering and voice generation are required.
+
+This is a functional frontend MVP, not a production-secured public service. The API currently has no user authentication or role management; do not expose it to the public internet until authentication, HTTPS, CORS/origin policy, rate limits, and secret management are configured. The UI does not yet provide a complete video approval editor, calendar drag-and-drop, analytics from platform insights, or Instagram/Facebook/TikTok account connections.
+
 ## CreatorOS Control Center API
 
 The unified Control Center endpoint aggregates channel, production, rendering, voice, publishing queue, upcoming schedule, recent job history, worker status, and local tool availability into one response.
