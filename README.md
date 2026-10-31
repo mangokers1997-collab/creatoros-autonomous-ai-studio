@@ -22,6 +22,27 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Scheduled Publishing Worker (opt-in MVP)
+
+A lightweight background worker polls the persistent publishing queue and claims due jobs atomically. It currently supports **YouTube only**, and uploads scheduled videos with **private** visibility by default. A human must approve and schedule each job first. The worker is disabled by default.
+
+### Enable
+
+1. Complete the YouTube OAuth setup above and verify the channel connection.
+2. Run a successful manual upload to a private test video first.
+3. Set `CREATOROS_PUBLISH_WORKER_ENABLED=true` in the server environment.
+4. Set `CREATOROS_PUBLISH_POLL_SECONDS=15` (allowed effective range: 5–300 seconds).
+5. Run exactly one API process for a simple local deployment; SQLite atomic claims also reduce duplicate claims if multiple processes are used.
+6. Check `GET /api/v1/publishing/worker` for enabled/running status.
+
+When a due item is claimed, its status changes to `publishing`; successful uploads become `published`, and errors become `failed`. Failed jobs can be rescheduled through `POST /api/v1/publishing/jobs/{job_id}/retry` with a future timezone-aware `scheduled_at`.
+
+**Important recovery behavior:** if a worker crashes during upload, the job is marked failed after a stale lease timeout. The remote platform may have received the video even if CreatorOS did not receive the response. Verify the YouTube channel before retrying to avoid duplicate posts. This MVP does not guarantee exactly-once delivery, does not publish to Meta/TikTok, and does not replace monitoring or a durable job queue. Keep the API host running continuously; a sleeping laptop or stopped server cannot publish on schedule.
+
+New endpoints:
+- `GET /api/v1/publishing/worker` — worker enabled/running status.
+- `POST /api/v1/publishing/jobs/{job_id}/retry` — schedule a failed item for another attempt.
+
 ## YouTube OAuth & Manual Upload Adapter (MVP)
 
 The backend contains a YouTube OAuth 2.0 connection flow and a resumable video upload endpoint. OAuth credentials are encrypted with Fernet and saved under `CREATOROS_TOKEN_DIR` (default `./secure_tokens`), which must remain private and outside version control. The signed OAuth state expires after ten minutes.
