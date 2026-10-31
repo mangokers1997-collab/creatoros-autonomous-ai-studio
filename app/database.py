@@ -992,14 +992,24 @@ def channel_analytics_summary(channel_id: str | None = None) -> dict:
     params = (channel_id,) if channel_id else ()
     with _connect() as conn:
         totals = conn.execute("SELECT COUNT(*) AS records,COALESCE(SUM(views),0) AS views,COALESCE(SUM(watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(likes),0) AS likes,COALESCE(SUM(comments),0) AS comments,COALESCE(SUM(shares),0) AS shares,COALESCE(SUM(subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(revenue_amount),0) AS revenue_amount FROM channel_metrics"+where,params).fetchone()
-        groups = conn.execute("SELECT c.id AS channel_id,c.name AS channel_name,c.platform,c.target_market,COUNT(m.id) AS records,COALESCE(SUM(m.views),0) AS views,COALESCE(SUM(m.watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(m.likes),0) AS likes,COALESCE(SUM(m.comments),0) AS comments,COALESCE(SUM(m.shares),0) AS shares,COALESCE(SUM(m.subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(m.revenue_amount),0) AS revenue_amount,MAX(m.revenue_currency) AS revenue_currency FROM channels c LEFT JOIN channel_metrics m ON m.channel_id=c.id"+(" WHERE c.id=?" if channel_id else "")+" GROUP BY c.id ORDER BY views DESC",([channel_id] if channel_id else [])).fetchall()
+        groups = conn.execute("SELECT c.id AS channel_id,c.name AS channel_name,c.platform,c.target_market,COUNT(m.id) AS records,COALESCE(SUM(m.views),0) AS views,COALESCE(SUM(m.watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(m.likes),0) AS likes,COALESCE(SUM(m.comments),0) AS comments,COALESCE(SUM(m.shares),0) AS shares,COALESCE(SUM(m.subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(m.revenue_amount),0) AS revenue_amount,MAX(m.revenue_currency) AS revenue_currency,COUNT(DISTINCT CASE WHEN m.revenue_amount>0 THEN m.revenue_currency END) AS currency_count FROM channels c LEFT JOIN channel_metrics m ON m.channel_id=c.id"+(" WHERE c.id=?" if channel_id else "")+" GROUP BY c.id ORDER BY views DESC",([channel_id] if channel_id else [])).fetchall()
         daily = conn.execute("SELECT metric_date,COALESCE(SUM(views),0) AS views,COALESCE(SUM(watch_time_minutes),0) AS watch_time_minutes,COALESCE(SUM(likes),0) AS likes,COALESCE(SUM(comments),0) AS comments,COALESCE(SUM(shares),0) AS shares,COALESCE(SUM(subscribers_gained),0) AS subscribers_gained,COALESCE(SUM(revenue_amount),0) AS revenue_amount FROM channel_metrics"+where+" GROUP BY metric_date ORDER BY metric_date DESC LIMIT 90",params).fetchall()
     result = dict(totals)
     engagement = result["likes"] + result["comments"] + result["shares"]
     result["engagements"] = engagement
     result["engagement_rate"] = round(engagement / result["views"] * 100, 2) if result["views"] else 0
-    currencies = {row["revenue_currency"] for row in groups if row["revenue_amount"]}
+        currency_query = "SELECT DISTINCT revenue_currency FROM channel_metrics WHERE revenue_amount>0" + (" AND channel_id=?" if channel_id else "")
+        currency_rows = conn.execute(currency_query, ([channel_id] if channel_id else [])).fetchall()
+    currencies = {row["revenue_currency"] for row in currency_rows}
     result["revenue_currency"] = next(iter(currencies)) if len(currencies) == 1 else ("mixed" if currencies else None)
     if len(currencies) > 1:
         result["revenue_amount"] = None
-    return {"totals": result, "channels": [dict(row) for row in groups], "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": False}
+    channel_rows = []
+    for row in groups:
+        item = dict(row)
+        if item["currency_count"] > 1:
+            item["revenue_amount"] = None
+            item["revenue_currency"] = "mixed"
+        item.pop("currency_count", None)
+        channel_rows.append(item)
+    return {"totals": result, "channels": channel_rows, "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": False}
