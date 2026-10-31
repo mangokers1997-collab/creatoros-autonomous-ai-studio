@@ -61,7 +61,7 @@ def build_optimization_report(records: list[dict]) -> dict:
         })
     if len(records) < 5:
         recommendations.append({
-            "priority": "high", "title": "Tambah data sebelum mengubah strategi besar",
+            "priority": "high", "title": "Tambah sampel sebelum mengubah strategi besar",
             "reason": f"Hanya {len(records)} video memiliki metrik terhubung; sampel masih kecil.",
             "action": "Kumpulkan setidaknya lima hingga sepuluh video dengan periode pengukuran serupa."
         })
