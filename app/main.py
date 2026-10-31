@@ -25,6 +25,10 @@ from app.publishing_engine import (
     list_publish_jobs, get_publish_job, publishing_adapter_status,
 )
 from app.platform_validation import validate_publish_metadata
+from app.youtube_adapter import (
+    start_youtube_connection, complete_youtube_connection,
+    youtube_connection_status, upload_youtube_video,
+)
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -121,6 +125,10 @@ class ProductionBatchRequest(BaseModel):
     generate_voice: bool = True
     render_video: bool = True
     duration_seconds: int = Field(default=48, ge=8, le=180)
+
+
+class YouTubeUploadRequest(BaseModel):
+    privacy_status: Literal["private", "unlisted", "public"] = "private"
 
 
 class PublishMetadataValidationRequest(BaseModel):
@@ -367,6 +375,48 @@ def retry_production_item(item_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="Failed batch item not found")
     background_tasks.add_task(run_production_batch, batch["id"])
     return batch
+
+
+@app.get("/api/v1/oauth/youtube/connect")
+def youtube_oauth_connect(channel_id: str):
+    try:
+        return start_youtube_connection(channel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/v1/oauth/youtube/callback")
+def youtube_oauth_callback(state: str, code: str | None = None, error: str | None = None):
+    if error:
+        raise HTTPException(status_code=400, detail="Google authorization was not completed.")
+    if not code:
+        raise HTTPException(status_code=400, detail="Authorization code is missing.")
+    try:
+        return complete_youtube_connection(state, code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"YouTube OAuth exchange failed: {str(exc)[:400]}")
+
+
+@app.get("/api/v1/oauth/youtube/status/{channel_id}")
+def youtube_oauth_status(channel_id: str):
+    try:
+        return youtube_connection_status(channel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/v1/publishing/jobs/{job_id}/upload-youtube")
+def youtube_upload(job_id: str, payload: YouTubeUploadRequest):
+    try:
+        return upload_youtube_video(job_id, payload.privacy_status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"YouTube upload failed: {str(exc)[:500]}")
 
 
 @app.post("/api/v1/publishing/validate-metadata")
