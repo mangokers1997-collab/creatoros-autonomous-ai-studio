@@ -143,8 +143,8 @@ def upload_youtube_video(job_id: str, privacy_status: str = "private") -> dict:
     job = publish_job_get(job_id)
     if not job:
         raise ValueError("Publishing job not found.")
-    if job.get("status") not in {"scheduled", "awaiting_approval"}:
-        raise ValueError("Only approved or awaiting-approval jobs can be uploaded manually.")
+    if job.get("status") not in {"scheduled", "awaiting_approval", "publishing"}:
+        raise ValueError("Job is not in a state that permits upload.")
     channel = channel_get(job["channel_id"])
     if not channel or channel.get("platform") != "youtube":
         raise ValueError("This job is not assigned to a YouTube channel.")
