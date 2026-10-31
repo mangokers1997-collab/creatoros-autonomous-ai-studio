@@ -86,6 +86,33 @@ def init_db() -> None:
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_packages_project ON content_packages(project_id);
+        CREATE TABLE IF NOT EXISTS media_assets (
+            id TEXT PRIMARY KEY,
+            original_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS render_jobs (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            package_id TEXT NOT NULL,
+            image_asset_id TEXT,
+            audio_asset_id TEXT,
+            status TEXT NOT NULL,
+            output_path TEXT NOT NULL DEFAULT '',
+            error TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY(package_id) REFERENCES content_packages(id) ON DELETE CASCADE,
+            FOREIGN KEY(image_asset_id) REFERENCES media_assets(id),
+            FOREIGN KEY(audio_asset_id) REFERENCES media_assets(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_render_status ON render_jobs(status);
         """)
 
 
@@ -277,3 +304,77 @@ def content_package_list(project_id: str) -> list[dict]:
         item["hashtags"] = json.loads(item["hashtags"])
         result.append(item)
     return result
+
+
+def media_asset_create(data: dict) -> dict:
+    item = {"id": str(uuid4()), **data, "created_at": _now()}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO media_assets
+            (id,original_name,stored_name,media_type,mime_type,size_bytes,created_at)
+            VALUES (:id,:original_name,:stored_name,:media_type,:mime_type,:size_bytes,:created_at)""",
+            item,
+        )
+    return item
+
+
+def media_asset_get(asset_id: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute(
+            "SELECT * FROM media_assets WHERE id=?", (asset_id,)
+        ).fetchone())
+
+
+def media_asset_list(limit: int = 100) -> list[dict]:
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            "SELECT * FROM media_assets ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()]
+
+
+def render_job_create(data: dict) -> dict:
+    now = _now()
+    item = {
+        "id": str(uuid4()), **data, "status": "queued",
+        "output_path": "", "error": "", "created_at": now, "updated_at": now,
+    }
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO render_jobs
+            (id,project_id,package_id,image_asset_id,audio_asset_id,status,output_path,error,duration_seconds,created_at,updated_at)
+            VALUES (:id,:project_id,:package_id,:image_asset_id,:audio_asset_id,:status,:output_path,:error,:duration_seconds,:created_at,:updated_at)""",
+            item,
+        )
+    return item
+
+
+def render_job_update(job_id: str, status: str, output_path: str = "", error: str = "") -> dict | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE render_jobs SET status=?,output_path=?,error=?,updated_at=? WHERE id=?""",
+            (status, output_path, error[:2000], _now(), job_id),
+        )
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM render_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def render_job_get(job_id: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute(
+            "SELECT * FROM render_jobs WHERE id=?", (job_id,)
+        ).fetchone())
+
+
+def render_job_list(project_id: str | None = None, limit: int = 50) -> list[dict]:
+    with _connect() as conn:
+        if project_id:
+            rows = conn.execute(
+                "SELECT * FROM render_jobs WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
+                (project_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM render_jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
