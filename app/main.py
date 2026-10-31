@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 from app import database
 from app.auth import (SESSION_COOKIE, SESSION_DAYS, create_owner, get_session, init_auth_tables, login as auth_login, owner_exists, revoke_session)
-from app.database import init_db, channel_create, channel_list, channel_delete
+from app.database import init_db, channel_create, channel_list, channel_delete, channel_get
 from app.database import project_create, project_list, project_get, project_update_status
 from app.database import research_create, research_list, research_get, research_source_create
 from app.database import content_package_list, media_asset_create, media_asset_get, media_asset_list
