@@ -154,6 +154,15 @@ def init_db() -> None:
             UNIQUE(market, title, source)
         );
         CREATE INDEX IF NOT EXISTS idx_trends_market_score ON trend_items(market, relevance_score DESC);
+        CREATE TABLE IF NOT EXISTS intelligence_reports (
+            id TEXT PRIMARY KEY,
+            market TEXT NOT NULL,
+            niche TEXT NOT NULL,
+            language TEXT NOT NULL,
+            report_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_intelligence_market ON intelligence_reports(market, niche, created_at);
         """)
 
 
@@ -513,5 +522,35 @@ def trend_items_list(market: str | None = None, niche: str | None = None, limit:
     with _connect() as conn:
         return [dict(row) for row in conn.execute(
             f"SELECT * FROM trend_items{where} ORDER BY relevance_score DESC, collected_at DESC LIMIT ?",
+            params,
+        ).fetchall()]
+
+
+def intelligence_report_create(market: str, niche: str, language: str, report_json: str) -> dict:
+    item = {"id": str(uuid4()), "market": market, "niche": niche,
+            "language": language, "report_json": report_json, "created_at": _now()}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO intelligence_reports
+            (id,market,niche,language,report_json,created_at)
+            VALUES (:id,:market,:niche,:language,:report_json,:created_at)""",
+            item,
+        )
+    return item
+
+
+def intelligence_report_list(market: str | None = None, niche: str | None = None, limit: int = 30) -> list[dict]:
+    clauses, params = [], []
+    if market:
+        clauses.append("market=?")
+        params.append(market)
+    if niche:
+        clauses.append("niche=?")
+        params.append(niche)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            f"SELECT * FROM intelligence_reports{where} ORDER BY created_at DESC LIMIT ?",
             params,
         ).fetchall()]
