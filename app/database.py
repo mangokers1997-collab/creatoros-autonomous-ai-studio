@@ -268,6 +268,10 @@ def init_db() -> None:
             FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE
         );
         """)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(publish_jobs)").fetchall()}
+        if "attempts" not in columns:
+            conn.execute("ALTER TABLE publish_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+
 
 
 def _dict(row):
@@ -902,3 +906,49 @@ def platform_credential_delete(channel_id: str, provider: str) -> bool:
             (channel_id, provider),
         )
         return bool(cur.rowcount)
+
+
+def publish_job_claim_due(now: str) -> dict | None:
+    """Atomically claim one due scheduled job across worker processes."""
+    with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT id FROM publish_jobs
+            WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at<=?
+            ORDER BY scheduled_at ASC LIMIT 1""", (now,)
+        ).fetchone()
+        if not row:
+            return None
+        job_id = row["id"]
+        cur = conn.execute(
+            """UPDATE publish_jobs SET status='publishing',attempts=attempts+1,
+            error='',updated_at=? WHERE id=? AND status='scheduled'""",
+            (now, job_id),
+        )
+        if cur.rowcount != 1:
+            return None
+        return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def publish_job_requeue_stale(cutoff: str, now: str) -> int:
+    """Mark long-abandoned uploads failed; never blindly duplicate an uncertain upload."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE publish_jobs SET status='failed',
+            error='Worker lease expired; verify the YouTube channel before retrying.',
+            updated_at=? WHERE status='publishing' AND updated_at<?""",
+            (now, cutoff),
+        )
+        return cur.rowcount
+
+
+def publish_job_retry(job_id: str, scheduled_at: str) -> dict | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE publish_jobs SET status='scheduled',scheduled_at=?,error='',
+            updated_at=? WHERE id=? AND status='failed'""",
+            (scheduled_at, _now(), job_id),
+        )
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
