@@ -35,6 +35,16 @@ Security controls included:
 - Mutating authenticated API requests require the `X-CreatorOS-Request: 1` same-origin header.
 - Only the initial setup, login, logout, auth status, and signed YouTube OAuth callback are exempt from the session requirement. Initial setup can create only the first owner.
 
+### First-run setup token
+
+Before opening the app for the first time, set `CREATOROS_SETUP_TOKEN` to a random secret of at least 32 characters in the server environment. Generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Enter this token once in the first-run setup form to claim the single owner account. The setup endpoint rejects requests without the configured token and refuses a second owner. Remove or rotate the setup token after the account has been created. Never publish it in source control or screenshots.
+
 ### Production configuration
 
 Set `CREATOROS_COOKIE_SECURE=true` when serving through HTTPS. Keep it false only for local HTTP development. Terminate TLS at a trusted reverse proxy, restrict network access, back up the database and encrypted token directory, and never commit `.env`, passwords, OAuth secrets, Fernet keys, or token files.
