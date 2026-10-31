@@ -35,6 +35,7 @@ from app.youtube_adapter import (
 from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.control_center import get_control_center
 from app.script_engine import generate_script, list_scripts, get_script, update_script, delete_script
+from app.script_voice_engine import available as script_voice_available, create_job as create_script_voice_job, get_job as get_script_voice_job, list_jobs as list_script_voice_jobs, run_job as run_script_voice_job, audio_path as script_voice_audio_path
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -410,6 +411,52 @@ def delete_generated_script(script_id: str):
     if not delete_script(script_id):
         raise HTTPException(status_code=404, detail="Script not found")
     return {"deleted": True, "id": script_id}
+
+
+
+@app.post("/api/v1/scripts/{script_id}/voice", status_code=202)
+def create_script_voice(script_id: str, background_tasks: BackgroundTasks):
+    job = create_script_voice_job(script_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Saved script not found")
+    background_tasks.add_task(run_script_voice_job, job["id"])
+    return {**job, "piper_available": script_voice_available()}
+
+
+@app.get("/api/v1/script-voice-jobs")
+def list_script_voice(limit: int = Query(default=50, ge=1, le=200)):
+    return list_script_voice_jobs(limit)
+
+
+@app.get("/api/v1/script-voice-jobs/{job_id}")
+def get_script_voice(job_id: str):
+    job = get_script_voice_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Voice job not found")
+    return job
+
+
+@app.get("/api/v1/script-voice-jobs/{job_id}/audio")
+def download_script_voice(job_id: str):
+    job = get_script_voice_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Voice job not found")
+    path = script_voice_audio_path(job_id)
+    if not path:
+        raise HTTPException(status_code=409 if job["status"] != "ready" else 404, detail="Audio is not ready or file is missing")
+    return FileResponse(path, media_type="audio/wav", filename=f"creatoros-script-voice-{job_id}.wav")
+
+
+@app.get("/api/v1/script-voice-jobs/{job_id}/subtitles")
+def download_script_voice_subtitles(job_id: str):
+    job = get_script_voice_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Voice job not found")
+    if job["status"] != "ready":
+        raise HTTPException(status_code=409, detail="Subtitles are not ready")
+    from fastapi.responses import Response
+    return Response(content=job["subtitles_srt"], media_type="application/x-subrip",
+        headers={"Content-Disposition": f'attachment; filename="creatoros-script-{job_id}.srt"'})
 
 
 @app.get("/api/v1/trends/markets")
