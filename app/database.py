@@ -113,6 +113,18 @@ def init_db() -> None:
             FOREIGN KEY(audio_asset_id) REFERENCES media_assets(id)
         );
         CREATE INDEX IF NOT EXISTS idx_render_status ON render_jobs(status);
+        CREATE TABLE IF NOT EXISTS render_scene_assets (
+            id TEXT PRIMARY KEY,
+            render_job_id TEXT NOT NULL,
+            scene_index INTEGER NOT NULL,
+            image_asset_id TEXT,
+            caption TEXT NOT NULL DEFAULT '',
+            visual_direction TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(render_job_id) REFERENCES render_jobs(id) ON DELETE CASCADE,
+            FOREIGN KEY(image_asset_id) REFERENCES media_assets(id),
+            UNIQUE(render_job_id, scene_index)
+        );
         CREATE TABLE IF NOT EXISTS voice_jobs (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -433,3 +445,24 @@ def voice_job_list(project_id: str | None = None, limit: int = 50) -> list[dict]
         else:
             rows = conn.execute("SELECT * FROM voice_jobs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(row) for row in rows]
+
+
+def render_scene_assets_replace(job_id: str, scenes: list[dict]) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM render_scene_assets WHERE render_job_id=?", (job_id,))
+        for index, scene in enumerate(scenes):
+            conn.execute(
+                """INSERT INTO render_scene_assets
+                (id,render_job_id,scene_index,image_asset_id,caption,visual_direction,created_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (str(uuid4()), job_id, index, scene.get("image_asset_id"),
+                 scene.get("caption", ""), scene.get("visual_direction", ""), _now()),
+            )
+
+
+def render_scene_assets_list(job_id: str) -> list[dict]:
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            "SELECT * FROM render_scene_assets WHERE render_job_id=? ORDER BY scene_index",
+            (job_id,),
+        ).fetchall()]
