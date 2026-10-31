@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Literal
+from app import database
 from app.auth import (SESSION_COOKIE, SESSION_DAYS, create_owner, get_session, init_auth_tables, login as auth_login, owner_exists, revoke_session)
 from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
@@ -949,3 +950,50 @@ def system_status():
         "publishing": "youtube_oauth_adapter_and_opt_in_worker_foundation",
         "human_approval_required": True,
     }
+
+
+class ChannelMetricCreate(BaseModel):
+    channel_id: str = Field(min_length=1, max_length=80)
+    publish_job_id: str | None = Field(default=None, max_length=80)
+    metric_date: str = Field(min_length=10, max_length=10, pattern=r"^\\d{4}-\\d{2}-\\d{2}$")
+    views: int = Field(default=0, ge=0, le=2_000_000_000)
+    watch_time_minutes: float = Field(default=0, ge=0, le=1_000_000_000)
+    likes: int = Field(default=0, ge=0, le=2_000_000_000)
+    comments: int = Field(default=0, ge=0, le=2_000_000_000)
+    shares: int = Field(default=0, ge=0, le=2_000_000_000)
+    subscribers_gained: int = Field(default=0, ge=-2_000_000_000, le=2_000_000_000)
+    revenue_amount: float = Field(default=0, ge=0, le=1_000_000_000)
+    revenue_currency: str = Field(default="USD", min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
+    source: Literal["manual", "youtube_api", "platform_api", "import"] = "manual"
+    notes: str = Field(default="", max_length=1000)
+
+
+@app.get("/api/v1/analytics/summary")
+def analytics_summary(channel_id: str | None = None):
+    if channel_id and not channel_get(channel_id):
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return database.channel_analytics_summary(channel_id)
+
+
+@app.get("/api/v1/analytics/metrics")
+def analytics_metrics(channel_id: str | None = None, limit: int = Query(default=100, ge=1, le=500)):
+    if channel_id and not channel_get(channel_id):
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return database.channel_metric_list(channel_id, limit)
+
+
+@app.post("/api/v1/analytics/metrics", status_code=201)
+def create_analytics_metric(payload: ChannelMetricCreate):
+    if not channel_get(payload.channel_id):
+        raise HTTPException(status_code=404, detail="Channel not found")
+    if payload.publish_job_id:
+        from app.database import publish_job_get
+        job = publish_job_get(payload.publish_job_id)
+        if not job or job["channel_id"] != payload.channel_id:
+            raise HTTPException(status_code=422, detail="Publishing job does not belong to this channel")
+    try:
+        from datetime import date
+        date.fromisoformat(payload.metric_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="metric_date must be a valid YYYY-MM-DD date")
+    return database.channel_metric_create(payload.model_dump())
