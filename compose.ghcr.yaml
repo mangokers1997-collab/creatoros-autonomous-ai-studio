@@ -1,0 +1,32 @@
+services:
+  creatoros:
+    image: ghcr.io/mangokers1997-collab/creatoros-autonomous-ai-studio:latest
+    container_name: creatoros
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CREATOROS_DB_PATH: /data/creatoros.db
+      CREATOROS_MEDIA_DIR: /data/media
+      CREATOROS_RENDER_DIR: /data/renders
+      CREATOROS_TOKEN_DIR: /data/secure_tokens
+      CREATOROS_COOKIE_SECURE: ${CREATOROS_COOKIE_SECURE:-false}
+      CREATOROS_PUBLISH_WORKER_ENABLED: ${CREATOROS_PUBLISH_WORKER_ENABLED:-false}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - creatoros_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+
+volumes:
+  creatoros_data:
