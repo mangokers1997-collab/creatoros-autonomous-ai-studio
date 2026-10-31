@@ -18,6 +18,8 @@ from app.database import trend_items_list
 from app.trend_engine import fetch_google_trends, MARKETS
 from app.intelligence_engine import analyze_content_opportunities, get_intelligence_reports
 from app.strategy_engine import generate_strategy, get_strategy, list_strategies, update_strategy_item
+from app.database import production_batch_create, production_batch_get, production_batch_list, production_batch_refresh
+from app.pipeline_engine import run_production_batch, retry_production_batch_item
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -32,7 +34,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -108,6 +110,14 @@ class StrategyItemUpdate(BaseModel):
     project_id: str | None = None
 
 
+class ProductionBatchRequest(BaseModel):
+    strategy_id: str
+    max_items: int = Field(default=5, ge=1, le=5)
+    generate_voice: bool = True
+    render_video: bool = True
+    duration_seconds: int = Field(default=48, ge=8, le=180)
+
+
 class ResearchSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     url: str = Field(default="", max_length=1000)
@@ -122,7 +132,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "1.0.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "1.1.0"}
 
 
 @app.get("/api/v1/channels")
@@ -294,6 +304,46 @@ def patch_strategy_item(item_id: str, payload: StrategyItemUpdate):
     if not item:
         raise HTTPException(status_code=404, detail="Strategy item not found")
     return item
+
+
+@app.post("/api/v1/production-batches", status_code=202)
+def create_production_batch(payload: ProductionBatchRequest, background_tasks: BackgroundTasks):
+    plan = get_strategy(payload.strategy_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Strategy plan not found")
+    candidates = [item for item in plan["items"] if item["status"] in {"planned", "in_progress"}]
+    candidates = candidates[:payload.max_items]
+    if not candidates:
+        raise HTTPException(status_code=409, detail="No planned strategy items are available for production.")
+    batch = production_batch_create(payload.strategy_id, candidates, {
+        "generate_voice": payload.generate_voice,
+        "render_video": payload.render_video,
+        "duration_seconds": payload.duration_seconds,
+    })
+    background_tasks.add_task(run_production_batch, batch["id"])
+    return batch
+
+
+@app.get("/api/v1/production-batches")
+def list_production_batches(limit: int = Query(default=30, ge=1, le=100)):
+    return production_batch_list(limit=limit)
+
+
+@app.get("/api/v1/production-batches/{batch_id}")
+def get_production_batch(batch_id: str):
+    batch = production_batch_get(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Production batch not found")
+    return batch
+
+
+@app.post("/api/v1/production-batch-items/{item_id}/retry", status_code=202)
+def retry_production_item(item_id: str, background_tasks: BackgroundTasks):
+    batch = retry_production_batch_item(item_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Failed batch item not found")
+    background_tasks.add_task(run_production_batch, batch["id"])
+    return batch
 
 
 @app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
@@ -468,7 +518,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "ai-content-strategy-engine",
+        "phase": "production-automation-batch-pipeline",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
