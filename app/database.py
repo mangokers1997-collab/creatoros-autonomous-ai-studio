@@ -113,6 +113,21 @@ def init_db() -> None:
             FOREIGN KEY(audio_asset_id) REFERENCES media_assets(id)
         );
         CREATE INDEX IF NOT EXISTS idx_render_status ON render_jobs(status);
+        CREATE TABLE IF NOT EXISTS voice_jobs (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            package_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            audio_asset_id TEXT,
+            subtitles_srt TEXT NOT NULL DEFAULT '',
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY(package_id) REFERENCES content_packages(id) ON DELETE CASCADE,
+            FOREIGN KEY(audio_asset_id) REFERENCES media_assets(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_voice_jobs_status ON voice_jobs(status);
         """)
 
 
@@ -377,4 +392,44 @@ def render_job_list(project_id: str | None = None, limit: int = 50) -> list[dict
             rows = conn.execute(
                 "SELECT * FROM render_jobs ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def voice_job_create(data: dict) -> dict:
+    now = _now()
+    item = {"id": str(uuid4()), **data, "status": "queued", "audio_asset_id": None,
+            "subtitles_srt": "", "error": "", "created_at": now, "updated_at": now}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO voice_jobs
+            (id,project_id,package_id,status,audio_asset_id,subtitles_srt,error,created_at,updated_at)
+            VALUES (:id,:project_id,:package_id,:status,:audio_asset_id,:subtitles_srt,:error,:created_at,:updated_at)""",
+            item,
+        )
+    return item
+
+
+def voice_job_update(job_id: str, status: str, audio_asset_id: str | None = None,
+                     subtitles_srt: str = "", error: str = "") -> dict | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE voice_jobs SET status=?,audio_asset_id=?,subtitles_srt=?,error=?,updated_at=? WHERE id=?""",
+            (status, audio_asset_id, subtitles_srt, error[:2000], _now(), job_id),
+        )
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM voice_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def voice_job_get(job_id: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute("SELECT * FROM voice_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def voice_job_list(project_id: str | None = None, limit: int = 50) -> list[dict]:
+    with _connect() as conn:
+        if project_id:
+            rows = conn.execute("SELECT * FROM voice_jobs WHERE project_id=? ORDER BY created_at DESC LIMIT ?", (project_id, limit)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM voice_jobs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(row) for row in rows]
