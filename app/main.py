@@ -35,6 +35,7 @@ from app.youtube_adapter import (
 )
 from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.control_center import get_control_center
+from app.performance_optimizer import build_optimization_report
 from app.script_engine import generate_script, list_scripts, get_script, update_script, delete_script
 from app.script_voice_engine import available as script_voice_available, create_job as create_script_voice_job, get_job as get_script_voice_job, list_jobs as list_script_voice_jobs, run_job as run_script_voice_job, audio_path as script_voice_audio_path
 from app.script_video_engine import create_job as create_script_video_job, get_job as get_script_video_job, list_jobs as list_script_video_jobs, run_job as run_script_video_job, video_path as script_video_path
@@ -967,6 +968,14 @@ class ChannelMetricCreate(BaseModel):
     source: Literal["manual", "youtube_api", "platform_api", "import"] = "manual"
     notes: str = Field(default="", max_length=1000)
 
+
+
+@app.get("/api/v1/analytics/optimization")
+def analytics_optimization(channel_id: str | None = None):
+    if channel_id and not channel_get(channel_id):
+        raise HTTPException(status_code=404, detail="Channel not found")
+    records = database.channel_performance_records(channel_id=channel_id, limit=500)
+    return build_optimization_report(records)
 
 @app.get("/api/v1/analytics/summary")
 def analytics_summary(channel_id: str | None = None):
