@@ -71,6 +71,21 @@ def init_db() -> None:
             FOREIGN KEY(brief_id) REFERENCES research_briefs(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_research_market ON research_briefs(target_market);
+        CREATE TABLE IF NOT EXISTS content_packages (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            hook TEXT NOT NULL,
+            description TEXT NOT NULL,
+            script TEXT NOT NULL,
+            storyboard_json TEXT NOT NULL,
+            subtitles_srt TEXT NOT NULL,
+            hashtags TEXT NOT NULL,
+            language TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_packages_project ON content_packages(project_id);
         """)
 
 
@@ -220,3 +235,45 @@ def research_source_create(brief_id: str, data: dict) -> dict | None:
             item,
         )
     return item
+
+
+import json
+
+
+def content_package_create(project_id: str, data: dict) -> dict | None:
+    project = project_get(project_id)
+    if not project:
+        return None
+    item = {
+        "id": str(uuid4()),
+        "project_id": project_id,
+        **data,
+        "storyboard_json": json.dumps(data["storyboard"], ensure_ascii=False),
+        "hashtags": json.dumps(data["hashtags"], ensure_ascii=False),
+        "generated_at": _now(),
+    }
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO content_packages
+            (id,project_id,title,hook,description,script,storyboard_json,subtitles_srt,hashtags,language,generated_at)
+            VALUES (:id,:project_id,:title,:hook,:description,:script,:storyboard_json,:subtitles_srt,:hashtags,:language,:generated_at)""",
+            item,
+        )
+    item["storyboard_json"] = data["storyboard"]
+    item["hashtags"] = data["hashtags"]
+    return item
+
+
+def content_package_list(project_id: str) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM content_packages WHERE project_id=? ORDER BY generated_at DESC",
+            (project_id,),
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["storyboard_json"] = json.loads(item["storyboard_json"])
+        item["hashtags"] = json.loads(item["hashtags"])
+        result.append(item)
+    return result
