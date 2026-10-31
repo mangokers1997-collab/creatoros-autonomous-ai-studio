@@ -230,6 +230,27 @@ def init_db() -> None:
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
         );
         CREATE INDEX IF NOT EXISTS idx_batch_items_batch ON production_batch_items(batch_id,status);
+        CREATE TABLE IF NOT EXISTS publish_jobs (
+            id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            render_job_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            caption TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'awaiting_approval',
+            scheduled_at TEXT,
+            approved_at TEXT,
+            published_at TEXT,
+            platform_post_id TEXT,
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY(render_job_id) REFERENCES render_jobs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_publish_schedule ON publish_jobs(status,scheduled_at);
+        CREATE INDEX IF NOT EXISTS idx_publish_channel ON publish_jobs(channel_id,created_at);
         """)
 
 
@@ -767,3 +788,52 @@ def production_batch_refresh(batch_id: str) -> dict | None:
 def production_batch_item_get(item_id: str) -> dict | None:
     with _connect() as conn:
         return _dict(conn.execute("SELECT * FROM production_batch_items WHERE id=?", (item_id,)).fetchone())
+
+
+def publish_job_create(data: dict) -> dict:
+    now = _now()
+    item = {"id": str(uuid4()), **data, "status": "awaiting_approval",
+            "scheduled_at": None, "approved_at": None, "published_at": None,
+            "platform_post_id": None, "error": "", "created_at": now, "updated_at": now}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO publish_jobs
+            (id,channel_id,project_id,render_job_id,title,caption,status,scheduled_at,approved_at,published_at,platform_post_id,error,created_at,updated_at)
+            VALUES (:id,:channel_id,:project_id,:render_job_id,:title,:caption,:status,:scheduled_at,:approved_at,:published_at,:platform_post_id,:error,:created_at,:updated_at)""",
+            item,
+        )
+    return item
+
+
+def publish_job_get(job_id: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def publish_job_list(channel_id: str | None = None, status: str | None = None, limit: int = 50) -> list[dict]:
+    clauses, params = [], []
+    if channel_id:
+        clauses.append("channel_id=?")
+        params.append(channel_id)
+    if status:
+        clauses.append("status=?")
+        params.append(status)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            f"SELECT * FROM publish_jobs{where} ORDER BY COALESCE(scheduled_at,created_at) ASC LIMIT ?",
+            params,
+        ).fetchall()]
+
+
+def publish_job_update(job_id: str, status: str, **fields) -> dict | None:
+    allowed = {"scheduled_at", "approved_at", "published_at", "platform_post_id", "error"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    updates.update({"status": status, "updated_at": _now(), "id": job_id})
+    assignments = ", ".join(f"{key}=:{key}" for key in updates if key != "id")
+    with _connect() as conn:
+        cur = conn.execute(f"UPDATE publish_jobs SET {assignments} WHERE id=:id", updates)
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
