@@ -540,3 +540,8 @@ Video rendering accepts `motion_preset`: `cinematic` (alternating gentle zoom/pa
 Video Studio exposes `GET /api/v1/script-video-jobs/{job_id}/quality`. The checker uses FFprobe to inspect MP4 readability, file size, portrait 1080×1920 dimensions, H.264 video, audio presence, duration, and availability of the source SRT. A script-duration comparison is advisory. The dashboard can display the report next to a completed render.
 
 Install FFmpeg with FFprobe on the server. Automated metadata checks cannot assess story quality, factual accuracy, image licensing, caption legibility, or whether subtitles are actually readable on screen. Always preview the entire MP4 and approve it manually before publishing.
+
+
+## Autonomous production queue
+
+The Production page can load saved strategy plans, start a batch of up to five planned items, select optional local voice and FFmpeg rendering, display per-item progress and errors, and retry failed items. Batch listing includes each item's state and retry count. Voice generation requires a configured Piper binary/model; video rendering requires FFmpeg. This is a background-task workflow inside the running API process, not a durable distributed worker: a server restart can interrupt in-flight work. Review generated projects and media before creating or approving publishing jobs; the queue does not auto-publish.
