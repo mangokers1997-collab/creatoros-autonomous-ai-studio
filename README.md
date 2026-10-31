@@ -22,6 +22,34 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## YouTube OAuth & Manual Upload Adapter (MVP)
+
+The backend contains a YouTube OAuth 2.0 connection flow and a resumable video upload endpoint. OAuth credentials are encrypted with Fernet and saved under `CREATOROS_TOKEN_DIR` (default `./secure_tokens`), which must remain private and outside version control. The signed OAuth state expires after ten minutes.
+
+### Setup
+
+1. In Google Cloud Console, create a project and enable **YouTube Data API v3**.
+2. Configure the OAuth consent screen and create an OAuth 2.0 client of type **Web application**.
+3. Add the exact `YOUTUBE_REDIRECT_URI` to the authorized redirect URIs.
+4. Copy `.env.example` to `.env` and set `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REDIRECT_URI`.
+5. Generate `CREATOROS_FERNET_KEY` with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+6. Set `CREATOROS_OAUTH_STATE_SECRET` to a random secret of at least 32 characters. Keep both secrets stable across restarts. Set `CREATOROS_TOKEN_DIR=./secure_tokens`.
+7. Install dependencies with `pip install -r requirements.txt` and start the API.
+8. Create a CreatorOS channel with platform `youtube`. Call `GET /api/v1/oauth/youtube/connect?channel_id=YOUR_CHANNEL_ID`, open the returned authorization URL, and complete Google consent.
+9. Check `GET /api/v1/oauth/youtube/status/YOUR_CHANNEL_ID`.
+10. Create a publishing draft linked to a completed render, approve it, then call `POST /api/v1/publishing/jobs/YOUR_JOB_ID/upload-youtube` with `{"privacy_status":"private"}`.
+
+### Endpoints
+
+- `GET /api/v1/oauth/youtube/connect?channel_id=...` — begin authorization.
+- `GET /api/v1/oauth/youtube/callback` — Google OAuth callback.
+- `GET /api/v1/oauth/youtube/status/{channel_id}` — connection status.
+- `POST /api/v1/publishing/jobs/{job_id}/upload-youtube` — manually upload a rendered MP4.
+
+Upload visibility defaults to **private**. Use `unlisted` or `public` only when deliberately requested. The adapter uses the `youtube.upload` scope and resumable upload chunks. It does not automatically execute scheduled jobs or publish to Instagram, Facebook, or TikTok. Google may require consent-screen test-user configuration, app verification, and quota eligibility. Review every video, media license, claims, and platform policy before upload.
+
+Never commit `.env`, OAuth client secrets, Fernet keys, state-signing secrets, or the `secure_tokens/` directory.
+
 ## Multi-platform Publishing Metadata Validation
 
 Before a post is placed in the publishing queue, CreatorOS can validate basic title and caption lengths against platform-specific limits for YouTube, Instagram, Facebook, and TikTok.
