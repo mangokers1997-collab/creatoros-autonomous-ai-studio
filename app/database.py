@@ -251,6 +251,22 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_publish_schedule ON publish_jobs(status,scheduled_at);
         CREATE INDEX IF NOT EXISTS idx_publish_channel ON publish_jobs(channel_id,created_at);
+        CREATE TABLE IF NOT EXISTS oauth_states (
+            state TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS platform_credentials (
+            channel_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            encrypted_credentials TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(channel_id,provider),
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE
+        );
         """)
 
 
@@ -837,3 +853,52 @@ def publish_job_update(job_id: str, status: str, **fields) -> dict | None:
         if not cur.rowcount:
             return None
         return _dict(conn.execute("SELECT * FROM publish_jobs WHERE id=?", (job_id,)).fetchone())
+
+
+def oauth_state_create(state: str, channel_id: str, provider: str, expires_at: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO oauth_states(state,channel_id,provider,expires_at,created_at) VALUES(?,?,?,?,?)",
+            (state, channel_id, provider, expires_at, _now()),
+        )
+
+
+def oauth_state_consume(state: str, provider: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM oauth_states WHERE state=? AND provider=? AND expires_at>?",
+            (state, provider, _now()),
+        ).fetchone()
+        if not row:
+            conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
+            return None
+        result = dict(row)
+        conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
+        return result
+
+
+def platform_credential_save(channel_id: str, provider: str, encrypted_credentials: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO platform_credentials(channel_id,provider,encrypted_credentials,updated_at)
+            VALUES(?,?,?,?) ON CONFLICT(channel_id,provider) DO UPDATE SET
+            encrypted_credentials=excluded.encrypted_credentials,updated_at=excluded.updated_at""",
+            (channel_id, provider, encrypted_credentials, _now()),
+        )
+
+
+def platform_credential_get(channel_id: str, provider: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute(
+            "SELECT channel_id,provider,encrypted_credentials,updated_at FROM platform_credentials WHERE channel_id=? AND provider=?",
+            (channel_id, provider),
+        ).fetchone())
+
+
+def platform_credential_delete(channel_id: str, provider: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM platform_credentials WHERE channel_id=? AND provider=?",
+            (channel_id, provider),
+        )
+        return bool(cur.rowcount)
