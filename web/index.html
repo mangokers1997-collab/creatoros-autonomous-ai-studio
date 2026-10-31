@@ -78,6 +78,17 @@
 <div class="card" style="margin-top:15px"><h3>Operational notes</h3><p class="muted">CreatorOS is a zero-budget-first foundation. A connected account, API approval, a continuously running server, and valid platform credentials are required before automated publishing can run. Protect API endpoints with authentication before public deployment.</p><a href="/docs" target="_blank" class="btn">Open API documentation ↗</a></div>
 </section>
 </div></main></div><div class="toast" id="toast"></div>
+<div id="authGate" style="display:none;position:fixed;inset:0;background:#090c12f2;z-index:20;align-items:center;justify-content:center;padding:18px">
+ <form id="authForm" class="card" style="width:min(420px,100%);padding:26px">
+  <div class="brand" style="padding:0 0 12px">CREATOR<span>OS</span></div>
+  <h2 id="authTitle" style="margin:0 0 5px">Sign in</h2>
+  <p id="authDescription" class="muted" style="margin:0 0 18px">Sign in to access your private content studio.</p>
+  <div class="field"><label>Username</label><input name="username" required minlength="3" maxlength="40" autocomplete="username"></div>
+  <div class="field" style="margin-top:12px"><label>Password (minimum 12 characters)</label><input name="password" type="password" required minlength="12" maxlength="128" autocomplete="current-password"></div>
+  <p id="authError" style="color:var(--red);font-size:12px"></p>
+  <button class="btn primary" id="authSubmit" style="width:100%">Sign in</button>
+ </form>
+</div>
 <script>
 const API='/api/v1';let snapshot=null,channels=[],projects=[],publishing=[];
 const $=id=>document.getElementById(id);
@@ -86,7 +97,7 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function statusClass(s){return ['published','rendered','connected','ready','ok'].includes(String(s).toLowerCase())?'ok':['failed','error','not_connected'].includes(String(s).toLowerCase())?'bad':['scheduled','publishing','rendering','pending'].includes(String(s).toLowerCase())?'warn':''}
 function pill(s){return '<span class="status '+statusClass(s)+'">'+esc(String(s||'unknown').replaceAll('_',' '))+'</span>'}
 function fmt(v){if(!v)return '—';const d=new Date(v);return isNaN(d)?esc(v):d.toLocaleString()}
-async function api(path,opts={}){const r=await fetch(API+path,{headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let data={};try{data=await r.json()}catch{}if(!r.ok)throw new Error(data.detail||'Request failed ('+r.status+')');return data}
+async function api(path,opts={}){const method=(opts.method||'GET').toUpperCase();const csrf=['POST','PUT','PATCH','DELETE'].includes(method)?{'X-CreatorOS-Request':'1'}:{};const r=await fetch(API+path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...csrf,...(opts.headers||{})},...opts});let data={};try{data=await r.json()}catch{}if(!r.ok)throw new Error(data.detail||'Request failed ('+r.status+')');return data}
 function showPage(name){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));$('page-'+name).classList.add('active');document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===name));$('topTitle').textContent={overview:'Overview',channels:'Channels',projects:'Projects',calendar:'Publishing',production:'Production',system:'System health'}[name];if(name==='calendar')loadPublishing()}
 document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 function statusRows(el,items){const total=items.reduce((a,x)=>a+(x.count||0),0)||1;$(el).innerHTML=items.length?items.map(x=>'<div><div class="list-row"><strong>'+esc(x.status)+'</strong><span>'+x.count+'</span></div><div class="bar"><i style="width:'+Math.round(x.count/total*100)+'%"></i></div></div>').join(''):'<div class="muted">No activity yet.</div>'}
@@ -100,5 +111,8 @@ async function refresh(){try{$('apiStatus').textContent='API connected';$('apiSt
 $('refreshBtn').addEventListener('click',refresh);
 $('channelForm').addEventListener('submit',async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.target));try{await api('/channels',{method:'POST',body:JSON.stringify(payload)});e.target.reset();toast('Channel created');await refresh()}catch(err){toast(err.message)}});
 $('projectForm').addEventListener('submit',async e=>{e.preventDefault();const payload=Object.fromEntries(new FormData(e.target));if(!payload.channel_id)delete payload.channel_id;try{await api('/projects',{method:'POST',body:JSON.stringify(payload)});e.target.reset();toast('Project created');await refresh()}catch(err){toast(err.message)}});
-refresh();setInterval(refresh,45000);
+async function showAuthGate(setup=false){$('authGate').style.display='flex';$('authTitle').textContent=setup?'Create your owner account':'Sign in';$('authDescription').textContent=setup?'First-time setup. Create a private owner account. Use a strong password and save it safely.':'Sign in to access your private content studio.';$('authSubmit').textContent=setup?'Create account':'Sign in';$('authForm').dataset.mode=setup?'setup':'login';}
+$('authForm').addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));$('authError').textContent='';$('authSubmit').disabled=true;try{const mode=e.target.dataset.mode;const res=await fetch(API+'/auth/'+mode,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await res.json();if(!res.ok)throw new Error(body.detail||'Authentication failed');$('authGate').style.display='none';e.target.reset();toast(mode==='setup'?'Owner account created':'Signed in');await refresh()}catch(err){$('authError').textContent=err.message}finally{$('authSubmit').disabled=false}});
+async function authBootstrap(){try{const status=await fetch(API+'/auth/status').then(r=>r.json());const me=await fetch(API+'/auth/me',{credentials:'same-origin'});if(me.ok){$('authGate').style.display='none';await refresh()}else{await showAuthGate(!!status.setup_required)}}catch(e){$('apiStatus').textContent='API unavailable';$('apiStatus').className='status bad';toast('Cannot reach CreatorOS API')}}
+authBootstrap();setInterval(()=>{if($('authGate').style.display!=='flex')refresh()},45000);
 </script></body></html>
