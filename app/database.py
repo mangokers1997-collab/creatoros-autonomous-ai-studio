@@ -163,6 +163,40 @@ def init_db() -> None:
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_intelligence_market ON intelligence_reports(market, niche, created_at);
+        CREATE TABLE IF NOT EXISTS strategy_plans (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            market TEXT NOT NULL,
+            niche TEXT NOT NULL,
+            language TEXT NOT NULL,
+            channel_id TEXT,
+            start_date TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            videos_per_day INTEGER NOT NULL,
+            plan_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_strategy_market ON strategy_plans(market,niche,created_at);
+        CREATE TABLE IF NOT EXISTS strategy_items (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            day_number INTEGER NOT NULL,
+            planned_date TEXT NOT NULL,
+            slot INTEGER NOT NULL,
+            topic TEXT NOT NULL,
+            angle TEXT NOT NULL,
+            title TEXT NOT NULL,
+            hook TEXT NOT NULL,
+            format TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'planned',
+            project_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(plan_id) REFERENCES strategy_plans(id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
+            UNIQUE(plan_id,day_number,slot)
+        );
+        CREATE INDEX IF NOT EXISTS idx_strategy_items_plan ON strategy_items(plan_id,day_number,slot);
         """)
 
 
@@ -554,3 +588,68 @@ def intelligence_report_list(market: str | None = None, niche: str | None = None
             f"SELECT * FROM intelligence_reports{where} ORDER BY created_at DESC LIMIT ?",
             params,
         ).fetchall()]
+
+
+def strategy_plan_create(data: dict, items: list[dict]) -> dict:
+    now = _now()
+    plan = {"id": str(uuid4()), **data, "created_at": now}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO strategy_plans
+            (id,name,market,niche,language,channel_id,start_date,days,videos_per_day,plan_json,created_at)
+            VALUES (:id,:name,:market,:niche,:language,:channel_id,:start_date,:days,:videos_per_day,:plan_json,:created_at)""",
+            plan,
+        )
+        for item in items:
+            row = {"id": str(uuid4()), "plan_id": plan["id"], **item, "status": "planned",
+                   "project_id": None, "created_at": now}
+            conn.execute(
+                """INSERT INTO strategy_items
+                (id,plan_id,day_number,planned_date,slot,topic,angle,title,hook,format,status,project_id,created_at)
+                VALUES (:id,:plan_id,:day_number,:planned_date,:slot,:topic,:angle,:title,:hook,:format,:status,:project_id,:created_at)""",
+                row,
+            )
+    return strategy_plan_get(plan["id"])
+
+
+def strategy_plan_get(plan_id: str) -> dict | None:
+    with _connect() as conn:
+        plan = _dict(conn.execute("SELECT * FROM strategy_plans WHERE id=?", (plan_id,)).fetchone())
+        if not plan:
+            return None
+        try:
+            plan["summary"] = json.loads(plan.pop("plan_json"))
+        except (json.JSONDecodeError, TypeError):
+            plan["summary"] = {}
+        plan["items"] = [dict(row) for row in conn.execute(
+            "SELECT * FROM strategy_items WHERE plan_id=? ORDER BY day_number,slot", (plan_id,)
+        ).fetchall()]
+        return plan
+
+
+def strategy_plan_list(market: str | None = None, niche: str | None = None, limit: int = 30) -> list[dict]:
+    clauses, params = [], []
+    if market:
+        clauses.append("market=?")
+        params.append(market)
+    if niche:
+        clauses.append("niche=?")
+        params.append(niche)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            f"SELECT id,name,market,niche,language,channel_id,start_date,days,videos_per_day,created_at FROM strategy_plans{where} ORDER BY created_at DESC LIMIT ?",
+            params,
+        ).fetchall()]
+
+
+def strategy_item_update(item_id: str, status: str, project_id: str | None = None) -> dict | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE strategy_items SET status=?,project_id=COALESCE(?,project_id) WHERE id=?",
+            (status, project_id, item_id),
+        )
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM strategy_items WHERE id=?", (item_id,)).fetchone())
