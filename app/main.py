@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Literal
 from app.database import init_db, channel_create, channel_list, channel_delete
@@ -52,6 +53,10 @@ app = FastAPI(
     version="1.1.0",
     lifespan=lifespan,
 )
+
+WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
+if WEB_ROOT.is_dir():
+    app.mount("/dashboard", StaticFiles(directory=str(WEB_ROOT), html=True), name="dashboard")
 
 
 class ChannelCreate(BaseModel):
@@ -169,7 +174,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "1.1.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "1.2.0"}
 
 
 @app.get("/api/v1/channels")
