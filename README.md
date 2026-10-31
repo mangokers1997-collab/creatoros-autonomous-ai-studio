@@ -22,6 +22,17 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## CreatorOS Control Center API
+
+The unified Control Center endpoint aggregates channel, production, rendering, voice, publishing queue, upcoming schedule, recent job history, worker status, and local tool availability into one response.
+
+- `GET /api/v1/control-center` — retrieve the live dashboard snapshot.
+- `GET /api/v1/system/status` — retrieve basic service status.
+
+The response includes channel counts and per-channel publishing counters; project, render, voice, and batch totals grouped by status; upcoming and recent publishing jobs; worker and adapter readiness; and FFmpeg/Piper availability.
+
+YouTube connection state is checked against the encrypted local token store. Other platform connections are inferred from stored credential records, which does not prove that a provider token remains valid. This is a backend API foundation, not yet a hosted web dashboard. Protect the endpoint with authentication before exposing it publicly.
+
 ## Scheduled Publishing Worker (opt-in MVP)
 
 A lightweight background worker polls the persistent publishing queue and claims due jobs atomically. It currently supports **YouTube only**, and uploads scheduled videos with **private** visibility by default. A human must approve and schedule each job first. The worker is disabled by default.
@@ -233,6 +244,7 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 |---|---|---|
 | GET | `/health` | Service health |
 | GET | `/api/v1/system/status` | Integration status |
+| GET | `/api/v1/control-center` | Unified channel, production, and publishing dashboard data |
 | GET / POST | `/api/v1/channels` | List or create channels |
 | DELETE | `/api/v1/channels/{id}` | Delete a channel |
 | GET / POST | `/api/v1/projects` | List or create content projects |
