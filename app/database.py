@@ -769,9 +769,10 @@ def production_batch_get(batch_id: str) -> dict | None:
 
 def production_batch_list(limit: int = 30) -> list[dict]:
     with _connect() as conn:
-        return [dict(row) for row in conn.execute(
-            "SELECT * FROM production_batches ORDER BY created_at DESC LIMIT ?", (limit,)
+        ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM production_batches ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()]
+    return [batch for batch_id in ids if (batch := production_batch_get(batch_id))]
 
 
 def production_batch_item_update(item_id: str, status: str, **fields) -> dict | None:
