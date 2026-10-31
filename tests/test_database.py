@@ -66,6 +66,9 @@ class ProductionBatchListTests(unittest.TestCase):
                 now="2026-01-01T00:00:00+00:00"
                 with database._connect() as conn:
                     conn.execute("INSERT INTO strategy_plans(id,name,market,niche,language,channel_id,start_date,days,videos_per_day,plan_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",("strategy-test","Test plan","ID","finance","id",None,"2026-01-01",1,1,"{}",now))
+                conn=None
+                with database._connect() as conn:
+                    conn.execute("INSERT INTO strategy_items(id,plan_id,day_number,planned_date,slot,topic,angle,title,hook,format,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",("strategy-item","strategy-test",1,"2026-01-01",1,"Budget","Simple tips","Budget tips","Start here","short","planned",now))
                 batch=database.production_batch_create("strategy-test",[{"id":"strategy-item"}],{"render_video":True})
                 rows=database.production_batch_list()
                 self.assertEqual(rows[0]["id"],batch["id"])
