@@ -1000,4 +1000,4 @@ def channel_analytics_summary(channel_id: str | None = None) -> dict:
     result["engagement_rate"] = round(engagement / result["views"] * 100, 2) if result["views"] else 0
     currencies = {row["revenue_currency"] for row in groups if row["revenue_amount"]}
     result["revenue_currency"] = next(iter(currencies)) if len(currencies) == 1 else ("mixed" if currencies else None)
-    return {"totals": result, "channels": [dict(row) for row in groups], "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": True}
+    if len(currencies) > 1:\n        result["revenue_amount"] = None\n    return {"totals": result, "channels": [dict(row) for row in groups], "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": False}
