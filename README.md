@@ -33,6 +33,20 @@ Generate a first-draft content package for an existing project. The engine creat
 - `POST /api/v1/projects/{id}/generate-package` — generate and store a package.
 - `GET /api/v1/projects/{id}/packages` — list saved packages for a project.
 
+## Local Video Production Engine (MVP)
+
+The rendering API assembles a portrait 1080x1920 MP4 from one still background image (or a generated dark background) and an optional uploaded voiceover. It also writes the package's SRT subtitle file beside the MP4. The subtitle file is currently a sidecar and is not burned into the video. This first renderer does not yet create motion graphics, multiple storyboard scenes, or AI-generated footage.
+
+Install FFmpeg separately and ensure the `ffmpeg` executable is available on PATH. FFmpeg is a system dependency and is not installed by pip. Upload media through the API; JPG, PNG, and WEBP images and MP3, WAV, AAC, M4A/MP4 audio, and OGG audio are supported up to 20 MB per file.
+
+- `POST /api/v1/assets/upload` — upload an image or voiceover file (multipart form field: `file`).
+- `GET /api/v1/assets` — list uploaded media assets.
+- `POST /api/v1/projects/{id}/render` — queue a render using a saved package.
+- `GET /api/v1/renders/{job_id}` — check render status.
+- `GET /api/v1/renders/{job_id}/download` — download completed MP4.
+
+Render requests accept `package_id`, optional `image_asset_id`, optional `audio_asset_id`, and `duration_seconds` (8–180). If FFmpeg is missing, the render job is marked failed with an installation hint. The API uses FastAPI background tasks; for sustained production workloads, replace this with a dedicated worker queue.
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
@@ -68,10 +82,10 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 3. [x] Content project workflow and status tracking.
 4. [x] Research briefs and source tracking.
 5. [x] First-draft script/storyboard/subtitle generation (template-based MVP).
-6. [ ] Local rendering pipeline (FFmpeg).
+6. [x] Basic local FFmpeg portrait renderer (single background + optional voiceover).
 7. [ ] Platform publishing adapters and analytics.
 8. [ ] Scheduling, retries, audit logs, and multi-workspace support.
 
 ## Current limitations
 
-This is an early backend. LLM-based generation, live trend retrieval, video rendering, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, live trend retrieval, multi-scene motion editing, AI voice generation, social account connections, scheduling, and actual publishing are not implemented yet.
