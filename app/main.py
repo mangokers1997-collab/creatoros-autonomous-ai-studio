@@ -20,6 +20,10 @@ from app.intelligence_engine import analyze_content_opportunities, get_intellige
 from app.strategy_engine import generate_strategy, get_strategy, list_strategies, update_strategy_item
 from app.database import production_batch_create, production_batch_get, production_batch_list, production_batch_refresh
 from app.pipeline_engine import run_production_batch, retry_production_batch_item
+from app.publishing_engine import (
+    create_publish_draft, approve_publish_job, cancel_publish_job,
+    list_publish_jobs, get_publish_job, publishing_adapter_status,
+)
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -116,6 +120,18 @@ class ProductionBatchRequest(BaseModel):
     generate_voice: bool = True
     render_video: bool = True
     duration_seconds: int = Field(default=48, ge=8, le=180)
+
+
+class PublishDraftRequest(BaseModel):
+    channel_id: str
+    project_id: str
+    render_job_id: str
+    title: str = Field(min_length=1, max_length=100)
+    caption: str = Field(default="", max_length=5000)
+
+
+class PublishApprovalRequest(BaseModel):
+    scheduled_at: str = Field(min_length=20, max_length=40)
 
 
 class ResearchSourceCreate(BaseModel):
@@ -346,6 +362,58 @@ def retry_production_item(item_id: str, background_tasks: BackgroundTasks):
     return batch
 
 
+@app.post("/api/v1/publishing/drafts", status_code=201)
+def create_publishing_draft(payload: PublishDraftRequest):
+    try:
+        return create_publish_draft(
+            payload.channel_id, payload.project_id, payload.render_job_id,
+            payload.title, payload.caption,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/publishing/jobs")
+def list_publishing_jobs(
+    channel_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return list_publish_jobs(channel_id=channel_id, status=status, limit=limit)
+
+
+@app.get("/api/v1/publishing/jobs/{job_id}")
+def get_publishing_job(job_id: str):
+    job = get_publish_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Publishing job not found")
+    return job
+
+
+@app.post("/api/v1/publishing/jobs/{job_id}/approve")
+def approve_publishing_job(job_id: str, payload: PublishApprovalRequest):
+    try:
+        job = approve_publish_job(job_id, payload.scheduled_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=409, detail="Job is not awaiting approval.")
+    return job
+
+
+@app.post("/api/v1/publishing/jobs/{job_id}/cancel")
+def cancel_publishing_job(job_id: str):
+    job = cancel_publish_job(job_id)
+    if not job:
+        raise HTTPException(status_code=409, detail="Job cannot be cancelled in its current state.")
+    return job
+
+
+@app.get("/api/v1/publishing/adapters")
+def get_publishing_adapters():
+    return publishing_adapter_status()
+
+
 @app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
 def generate_project_package(project_id: str):
     package = generate_content_package(project_id)
@@ -518,10 +586,10 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "production-automation-batch-pipeline",
+        "phase": "publishing-queue-and-scheduling-foundation",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
-        "publishing": "disabled",
+        "publishing": "approval_queue_ready_platform_adapters_not_configured",
         "human_approval_required": True,
     }
