@@ -500,6 +500,16 @@ def get_script_video_job(job_id: str):
     return job
 
 
+
+@app.get("/api/v1/script-video-jobs/{job_id}/quality")
+def inspect_script_video_quality(job_id: str):
+    from app.video_quality_engine import inspect_video
+    result = inspect_video(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Video job not found")
+    return result
+
+
 @app.get("/api/v1/script-video-jobs/{job_id}/download")
 def download_script_video(job_id: str):
     job = get_script_video_job(job_id)
