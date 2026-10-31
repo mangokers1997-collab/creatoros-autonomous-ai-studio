@@ -526,3 +526,10 @@ The current renderer creates a 1080×1920 vertical video with timed scene text, 
 Video Studio accepts up to 12 user-supplied JPG, PNG, or WEBP images and maps them in storyboard order. Upload exactly one image per scene, or upload none to use the fallback background. Images are stored in the media asset library; FFmpeg crops each still to 1080×1920, assembles the clips, adds saved narration, and burns in SRT captions.
 
 Use only images you own or have permission to use. This is a still-image slideshow workflow, not AI image generation, stock search, animation, or motion control. The existing upload endpoint enforces a 20 MB per-file limit.
+
+
+## Visual prompt sheets and camera motion
+
+Video Studio now offers `GET /api/v1/scripts/{id}/visual-prompts`, which creates a reusable character reference and one 9:16 prompt per storyboard scene. These are prompt texts only; they do not generate images or call a paid provider. Use them with a locally hosted image model if available and verify its model/output license.
+
+Video rendering accepts `motion_preset`: `cinematic` (alternating gentle zoom/pan), `gentle_zoom`, `pan_left`, `pan_right`, or `static`. FFmpeg applies Ken Burns-style movement to uploaded still images. This is camera motion on still images, not character animation or AI video generation. Existing jobs are migrated with a default `cinematic` preset.
