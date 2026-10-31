@@ -22,6 +22,19 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Publishing Queue & Scheduling Foundation (MVP)
+
+Create a publishing draft linked to a channel, approved project, and completed rendered video. Drafts enter `awaiting_approval`; a human must approve them with an ISO-8601 future timestamp that includes a timezone. The queue persists schedule metadata and supports filtering, inspection, approval, and cancellation. This release does **not** upload to social platforms yet; adapter status reports the missing OAuth/app-review prerequisites honestly.
+
+- `POST /api/v1/publishing/drafts` — create a draft queue item.
+- `GET /api/v1/publishing/jobs` — list queue items; optional `channel_id` and `status` filters.
+- `GET /api/v1/publishing/jobs/{job_id}` — inspect one item.
+- `POST /api/v1/publishing/jobs/{job_id}/approve` — approve and schedule with `scheduled_at`, e.g. `2026-11-01T10:00:00+07:00`.
+- `POST /api/v1/publishing/jobs/{job_id}/cancel` — cancel an unprocessed item.
+- `GET /api/v1/publishing/adapters` — inspect platform integration readiness.
+
+A scheduled item is a persisted schedule, not an automatic upload. Platform upload adapters, OAuth consent/token storage, token refresh, background scheduler/worker, and platform review are still future work. Never store secrets in Git; configure them through environment variables or a secure secret manager.
+
 ## Production Automation & Batch Pipeline (MVP)
 
 Turn saved strategy calendar entries into content projects and draft packages in sequential batches of up to five. Each item creates a project, generates its script/storyboard/subtitles package, and can optionally synthesize local voice with Piper and render a portrait MP4 with FFmpeg. If a requested local dependency is unavailable, the item is marked failed with a diagnostic; retry it after fixing the setup. Rendering without supplied images uses the renderer's generated background. The pipeline never publishes automatically.
@@ -174,6 +187,12 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | GET | `/api/v1/production-batches` | List production batches |
 | GET | `/api/v1/production-batches/{batch_id}` | Get batch progress and item details |
 | POST | `/api/v1/production-batch-items/{item_id}/retry` | Retry a failed production item |
+| POST | `/api/v1/publishing/drafts` | Create a publishing draft linked to a rendered video |
+| GET | `/api/v1/publishing/jobs` | List publishing queue items |
+| GET | `/api/v1/publishing/jobs/{job_id}` | Get a publishing job |
+| POST | `/api/v1/publishing/jobs/{job_id}/approve` | Approve and schedule a publishing job |
+| POST | `/api/v1/publishing/jobs/{job_id}/cancel` | Cancel an unprocessed publishing job |
+| GET | `/api/v1/publishing/adapters` | Check platform adapter readiness |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
 
