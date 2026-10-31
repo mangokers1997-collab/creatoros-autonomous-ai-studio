@@ -16,6 +16,7 @@ from app.renderer import MEDIA_ROOT, RENDER_ROOT, ffmpeg_available, run_render_j
 from app.voice_engine import piper_available, run_voice_job
 from app.database import trend_items_list
 from app.trend_engine import fetch_google_trends, MARKETS
+from app.intelligence_engine import analyze_content_opportunities, get_intelligence_reports
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -30,7 +31,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.8.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
 
@@ -83,6 +84,14 @@ class TrendRefreshRequest(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
 
 
+class IntelligenceRequest(BaseModel):
+    market: str = Field(default="US", min_length=2, max_length=2)
+    niche: str = Field(default="personal finance", min_length=2, max_length=80)
+    language: str = Field(default="", max_length=12)
+    seed_keywords: list[str] = Field(default_factory=list, max_length=30)
+    competitor_queries: list[str] = Field(default_factory=list, max_length=5)
+
+
 class ResearchSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     url: str = Field(default="", max_length=1000)
@@ -97,7 +106,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "0.8.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "0.9.0"}
 
 
 @app.get("/api/v1/channels")
@@ -204,6 +213,26 @@ def list_trends(
     limit: int = Query(default=50, ge=1, le=200),
 ):
     return trend_items_list(market=market, niche=niche, limit=limit)
+
+
+@app.post("/api/v1/intelligence/analyze")
+def analyze_intelligence(payload: IntelligenceRequest):
+    try:
+        return analyze_content_opportunities(
+            payload.market, payload.niche, payload.language,
+            payload.seed_keywords, payload.competitor_queries,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/intelligence/reports")
+def list_intelligence_reports(
+    market: str | None = None,
+    niche: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+):
+    return get_intelligence_reports(market=market, niche=niche, limit=limit)
 
 
 @app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
@@ -378,7 +407,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "content-research-automation",
+        "phase": "keyword-and-competitor-intelligence",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
