@@ -74,3 +74,51 @@ class ProductionBatchListTests(unittest.TestCase):
                 self.assertEqual(rows[0]["id"],batch["id"])
                 self.assertEqual(len(rows[0]["items"]),1)
                 self.assertTrue(rows[0]["options"]["render_video"])
+
+
+class ChannelAnalyticsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "analytics.db"
+        self.path_patcher = patch.object(database, "DB_PATH", self.db_path)
+        self.path_patcher.start()
+        database.init_db()
+        self.channel = database.channel_create({
+            "name": "Analytics test", "platform": "youtube",
+            "target_market": "ID", "language": "id", "niche": "education"
+        })
+
+    def tearDown(self):
+        self.path_patcher.stop()
+        self.temp_dir.cleanup()
+
+    def test_metric_storage_and_engagement_rate(self):
+        database.channel_metric_create({
+            "channel_id": self.channel["id"], "publish_job_id": None,
+            "metric_date": "2026-10-31", "views": 1000,
+            "watch_time_minutes": 250, "likes": 80, "comments": 10,
+            "shares": 10, "subscribers_gained": 5, "revenue_amount": 12.5,
+            "revenue_currency": "USD", "source": "manual", "notes": ""
+        })
+        summary = database.channel_analytics_summary(self.channel["id"])
+        self.assertEqual(summary["totals"]["views"], 1000)
+        self.assertEqual(summary["totals"]["engagement_rate"], 10.0)
+        self.assertEqual(summary["totals"]["revenue_amount"], 12.5)
+        self.assertEqual(len(database.channel_metric_list(self.channel["id"])), 1)
+
+    def test_mixed_currency_is_not_summed(self):
+        common = {
+            "publish_job_id": None, "metric_date": "2026-10-31",
+            "views": 100, "watch_time_minutes": 10, "likes": 1,
+            "comments": 0, "shares": 0, "subscribers_gained": 0,
+            "source": "manual", "notes": ""
+        }
+        database.channel_metric_create({**common, "channel_id": self.channel["id"], "revenue_amount": 10, "revenue_currency": "USD"})
+        other = database.channel_create({
+            "name": "Second channel", "platform": "youtube",
+            "target_market": "GB", "language": "en", "niche": "education"
+        })
+        database.channel_metric_create({**common, "channel_id": other["id"], "revenue_amount": 8, "revenue_currency": "GBP"})
+        summary = database.channel_analytics_summary()
+        self.assertEqual(summary["totals"]["revenue_currency"], "mixed")
+        self.assertIsNone(summary["totals"]["revenue_amount"])
