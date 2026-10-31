@@ -2,7 +2,7 @@
 
 Zero-budget-first workspace for planning, producing, reviewing, and publishing faceless content across multiple channels and target markets.
 
-## Current milestone: Local voice and video production foundation
+## Current milestone: Multi-scene visual story production
 
 The FastAPI backend now includes SQLite persistence, channel management, content project creation, project filtering, and workflow status updates.
 
@@ -45,7 +45,7 @@ Install FFmpeg separately and ensure the `ffmpeg` executable is available on PAT
 - `GET /api/v1/renders/{job_id}` — check render status.
 - `GET /api/v1/renders/{job_id}/download` — download completed MP4.
 
-Render requests accept `package_id`, optional `image_asset_id`, optional `audio_asset_id`, and `duration_seconds` (8–180). If FFmpeg is missing, the render job is marked failed with an installation hint. The API uses FastAPI background tasks; for sustained production workloads, replace this with a dedicated worker queue.
+Render requests accept `package_id`, optional `image_asset_id`, optional `audio_asset_id`, `duration_seconds` (8–180), and optional `scene_asset_ids`. If FFmpeg is missing, the render job is marked failed with an installation hint. The API uses FastAPI background tasks; for sustained production workloads, replace this with a dedicated worker queue.
 
 ## Local AI Voice & Timed Subtitle Engine
 
@@ -62,6 +62,12 @@ This is offline after the executable and model are installed. Voice availability
 - `GET /api/v1/voice-jobs/{job_id}/subtitles` — download SRT subtitles timed from the duration of each generated narration chunk.
 
 The engine synthesizes paragraph-sized chunks and measures their actual WAV durations for subtitle timing. This is chunk-level timing, not word-level forced alignment. The service reports a failed job if Piper or its model is not configured; it does not silently call a paid cloud API.
+
+## Visual Story Engine (multi-scene MVP)
+
+The renderer now creates one short clip per storyboard scene, applies a gentle Ken Burns-style zoom, overlays each scene's narration/visual direction, concatenates the clips, and burns scene-timed SRT captions into the final portrait MP4. Upload one image per scene with `scene_asset_ids`; if omitted, the general `image_asset_id` is reused for every scene, or generated dark backgrounds are used. A storyboard scene is represented by the saved content package.
+
+Render request fields: `package_id`, optional `image_asset_id`, optional `audio_asset_id`, `duration_seconds`, and optional `scene_asset_ids` (one ID or null per storyboard scene). Up to 12 scenes are supported. For burned-in subtitles, FFmpeg must include the subtitles/libass filter. Set `CREATOROS_FONT_FILE` to a font file path if a suitable font is not available on the host. This is motion editing from supplied still images, not generative AI video or character motion control.
 
 ## API endpoints
 
@@ -98,10 +104,10 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 3. [x] Content project workflow and status tracking.
 4. [x] Research briefs and source tracking.
 5. [x] First-draft script/storyboard/subtitle generation (template-based MVP).
-6. [x] Basic local FFmpeg portrait renderer (single background + optional voiceover).
+6. [x] Local FFmpeg portrait renderer with multi-scene zoom, text overlays, and burned-in captions.
 7. [ ] Platform publishing adapters and analytics.
 8. [ ] Scheduling, retries, audit logs, and multi-workspace support.
 
 ## Current limitations
 
-This is an early backend. LLM-based generation, live trend retrieval, multi-scene motion editing, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, live trend retrieval, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
