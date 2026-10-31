@@ -545,3 +545,8 @@ Install FFmpeg with FFprobe on the server. Automated metadata checks cannot asse
 ## Autonomous production queue
 
 The Production page can load saved strategy plans, start a batch of up to five planned items, select optional local voice and FFmpeg rendering, display per-item progress and errors, and retry failed items. Batch listing includes each item's state and retry count. Voice generation requires a configured Piper binary/model; video rendering requires FFmpeg. This is a background-task workflow inside the running API process, not a durable distributed worker: a server restart can interrupt in-flight work. Review generated projects and media before creating or approving publishing jobs; the queue does not auto-publish.
+
+
+## Publishing Center — draft review and scheduling
+
+The Publishing page can create a draft from an approved/rendered project and its completed render, validate title/caption length against the selected channel platform, and display queued jobs. A human can approve a draft with a future ISO-8601 schedule time or cancel it. Creating a draft does not publish it. Actual publishing remains dependent on provider OAuth, app permissions, adapter readiness, and worker configuration; Instagram, Facebook, and TikTok are not yet implemented as upload adapters. The current draft flow uses the standard project render jobs, not Script Studio's separate script-video job records.
