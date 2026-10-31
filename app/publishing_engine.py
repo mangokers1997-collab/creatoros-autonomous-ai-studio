@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 
 from app.database import (
     channel_get, project_get, render_job_get,
@@ -63,7 +64,15 @@ def get_publish_job(job_id: str) -> dict | None:
 
 def publishing_adapter_status() -> dict:
     return {
-        "youtube": {"implemented": False, "reason": "OAuth consent and token storage are not configured."},
+        "youtube": {
+            "implemented": True,
+            "configured": all(os.getenv(key, "").strip() for key in (
+                "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REDIRECT_URI",
+                "CREATOROS_FERNET_KEY", "CREATOROS_OAUTH_STATE_SECRET",
+            )),
+            "mode": "manual_upload_private_by_default",
+            "reason": "OAuth adapter is implemented; configure Google OAuth and connect each channel before uploading.",
+        },
         "instagram": {"implemented": False, "reason": "Meta app review, permissions, and account connection are not configured."},
         "facebook": {"implemented": False, "reason": "Meta app review, permissions, and account connection are not configured."},
         "tiktok": {"implemented": False, "reason": "TikTok Content Posting API approval and creator authorization are not configured."},
