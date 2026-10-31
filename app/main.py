@@ -53,7 +53,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
 )
 
@@ -78,7 +78,7 @@ PUBLIC_AUTH_PATHS = {
     "/api/v1/auth/login", "/api/v1/auth/logout",
     "/api/v1/oauth/youtube/callback",
 }
-PUBLIC_ROOT_PATHS = {"/", "/dashboard", "/dashboard/"}
+PUBLIC_ROOT_PATHS = {"/", "/health", "/dashboard", "/dashboard/"}
 COOKIE_SECURE = __import__("os").getenv("CREATOROS_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
 
@@ -266,7 +266,7 @@ class ResearchSourceCreate(BaseModel):
 
 @app.get("/")
 def root():
-    return {"name": "CreatorOS API", "version": "1.2.0", "docs": "/docs"}
+    return {"name": "CreatorOS API", "version": "1.4.0", "docs": "/docs"}
 
 
 @app.get("/health")
