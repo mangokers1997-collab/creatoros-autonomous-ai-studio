@@ -145,6 +145,37 @@ The database backup does not include uploaded media or encrypted OAuth token fil
 - This is a self-hosted deployment foundation, not a free managed cloud host. The server, storage, domain, and HTTPS infrastructure may incur costs.
 - The container build is checked in GitHub Actions; successful image compilation does not replace a live deployment test or a security audit.
 
+## Automated container publishing and deployment
+
+A GitHub Actions workflow at `.github/workflows/container-publish.yml` builds the Docker image and publishes tags to GitHub Container Registry (GHCR) after pushes to `main`, version tags (`v*`), or a manual workflow dispatch.
+
+The production Compose file `compose.ghcr.yaml` pulls the published image instead of building it on the server.
+
+### First deployment on your own Linux server
+
+1. Install Docker Engine and the Docker Compose plugin.
+2. Clone this repository and enter its directory.
+3. Copy `.env.docker.example` to `.env`; configure the setup token, Fernet key, OAuth state secret, and other required settings. Keep `.env` private.
+4. Wait until the GitHub Actions container-publish workflow completes. If the GHCR package is private, authenticate the server with a GitHub token that has read access to packages. Do not put the token in this repository.
+5. Run:
+
+```bash
+docker compose -f compose.ghcr.yaml pull
+docker compose -f compose.ghcr.yaml up -d
+```
+
+For later releases, run `sh scripts/deploy-ghcr.sh`. It pulls the latest image, updates the service, and waits for the health endpoint before reporting success. It prints recent container logs if the health check times out.
+
+The application remains bound to localhost. Configure a trusted HTTPS reverse proxy before remote access and set `CREATOROS_COOKIE_SECURE=true`. The deploy script does not configure DNS, TLS, firewall rules, server provisioning, or GHCR package visibility.
+
+### CI/CD boundaries
+
+- GitHub Actions can build and publish the image within GitHub's applicable usage allowances; quotas and terms may change.
+- Publishing an image does not provide a server or make the app publicly hosted.
+- GHCR package visibility may need to be changed to public in package settings if you want anonymous server pulls. Otherwise, authenticate with a least-privilege read-only token.
+- Back up the persistent data volume and preserve the encryption key before upgrades. The deploy script does not automatically back up user data.
+- Keep publishing automation disabled until each platform integration has been authorized and manually tested.
+
 ## CreatorOS Control Center API
 
 The unified Control Center endpoint aggregates channel, production, rendering, voice, publishing queue, upcoming schedule, recent job history, worker status, and local tool availability into one response.
