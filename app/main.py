@@ -22,13 +22,14 @@ from app.database import production_batch_create, production_batch_get, producti
 from app.pipeline_engine import run_production_batch, retry_production_batch_item
 from app.publishing_engine import (
     create_publish_draft, approve_publish_job, cancel_publish_job,
-    list_publish_jobs, get_publish_job, publishing_adapter_status,
+    list_publish_jobs, get_publish_job, publishing_adapter_status, retry_publish_job,
 )
 from app.platform_validation import validate_publish_metadata
 from app.youtube_adapter import (
     start_youtube_connection, complete_youtube_connection,
     youtube_connection_status, upload_youtube_video,
 )
+from app.publishing_worker import start_worker, stop_worker, worker_status
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -37,7 +38,11 @@ ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_r
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    yield
+    start_worker()
+    try:
+        yield
+    finally:
+        stop_worker()
 
 
 app = FastAPI(
@@ -469,6 +474,22 @@ def cancel_publishing_job(job_id: str):
     if not job:
         raise HTTPException(status_code=409, detail="Job cannot be cancelled in its current state.")
     return job
+
+
+@app.post("/api/v1/publishing/jobs/{job_id}/retry")
+def retry_publishing_job(job_id: str, payload: PublishApprovalRequest):
+    try:
+        job = retry_publish_job(job_id, payload.scheduled_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=409, detail="Only failed jobs can be rescheduled.")
+    return job
+
+
+@app.get("/api/v1/publishing/worker")
+def get_publishing_worker_status():
+    return worker_status()
 
 
 @app.get("/api/v1/publishing/adapters")
