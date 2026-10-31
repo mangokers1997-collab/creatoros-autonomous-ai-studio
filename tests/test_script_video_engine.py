@@ -22,3 +22,17 @@ class ScriptVideoEngineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VideoQualityEngineTests(unittest.TestCase):
+    def test_unknown_job_returns_none(self):
+        from app.video_quality_engine import inspect_video
+        with patch("app.video_quality_engine.get_job",return_value=None):
+            self.assertIsNone(inspect_video("missing"))
+
+    def test_non_ready_job_returns_not_ready_report(self):
+        from app.video_quality_engine import inspect_video
+        with patch("app.video_quality_engine.get_job",return_value={"id":"j","status":"rendering"}):
+            result=inspect_video("j")
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["status"],"not_ready")
