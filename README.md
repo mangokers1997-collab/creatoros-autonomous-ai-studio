@@ -498,3 +498,14 @@ The Script Studio API creates and saves structured drafts without requiring a pa
 Inputs include topic, niche, market, language (Indonesian, English, Japanese, Arabic), audience, short/long format, duration, tone, narrative structure, CTA, and source notes. Output includes hook, outline, scene timing, voiceover, on-screen text, visual direction, caption, hashtags, production notes, and a fact-check checklist.
 
 Important limitation: the current engine is a deterministic template-based fallback, not a hosted generative AI model. Review and rewrite every draft, verify claims, check translations, and use licensed media. No guarantee of originality, retention, monetization, or earnings.
+
+
+## Voice Studio for Script Studio drafts
+
+Saved Script Studio drafts can be sent directly to the local Piper TTS bridge:
+- `POST /api/v1/scripts/{id}/voice` — queue voice generation.
+- `GET /api/v1/script-voice-jobs` and `GET /api/v1/script-voice-jobs/{id}` — inspect jobs.
+- `GET /api/v1/script-voice-jobs/{id}/audio` — retrieve WAV audio.
+- `GET /api/v1/script-voice-jobs/{id}/subtitles` — retrieve SRT subtitles.
+
+Configure `PIPER_BIN` and `PIPER_MODEL` in the private server environment. The model file must be downloaded separately and its license checked. Without a configured Piper binary and compatible ONNX voice model, the job reports a clear failure; the app does not silently use a paid cloud voice service. Audio generation is local and resource use depends on the host CPU/RAM. This is a single configured model per server in this milestone; per-language voice selection is not yet implemented.
