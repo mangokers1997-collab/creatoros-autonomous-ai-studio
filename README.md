@@ -26,6 +26,13 @@ Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default
 
 Research briefs are stored by topic, niche, target market, language, audience, goal, seed keywords, competitor references, and notes. Source records can be attached with a title, optional URL, source type, and observation. This is a structured research notebook; it does not yet fetch live trends or scrape competitor channels.
 
+## Content Intelligence Engine (template-based MVP)
+
+Generate a first-draft content package for an existing project. The engine creates a hook, title, description, narration script, five-scene storyboard, SRT subtitles, and hashtag suggestions. It currently uses deterministic templates in English and Indonesian; it is not an LLM, live research service, translation engine, or fact-checker. Review and customize every draft before publishing.
+
+- `POST /api/v1/projects/{id}/generate-package` — generate and store a package.
+- `GET /api/v1/projects/{id}/packages` — list saved packages for a project.
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
@@ -37,6 +44,8 @@ Research briefs are stored by topic, niche, target market, language, audience, g
 | GET / POST | `/api/v1/projects` | List or create content projects |
 | GET | `/api/v1/projects/{id}` | Get one project |
 | PATCH | `/api/v1/projects/{id}/status` | Move a project through workflow states |
+| POST | `/api/v1/projects/{id}/generate-package` | Generate a first-draft content package |
+| GET | `/api/v1/projects/{id}/packages` | List saved content packages |
 | GET / POST | `/api/v1/research` | List or create research briefs |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
@@ -58,11 +67,11 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 2. [x] SQLite persistence and channel management.
 3. [x] Content project workflow and status tracking.
 4. [x] Research briefs and source tracking.
-5. [ ] Script/storyboard generation with pluggable local/hosted providers.
+5. [x] First-draft script/storyboard/subtitle generation (template-based MVP).
 6. [ ] Local rendering pipeline (FFmpeg).
 7. [ ] Platform publishing adapters and analytics.
 8. [ ] Scheduling, retries, audit logs, and multi-workspace support.
 
 ## Current limitations
 
-This is an early backend. AI generation, live trend retrieval, video rendering, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, live trend retrieval, video rendering, social account connections, scheduling, and actual publishing are not implemented yet.
