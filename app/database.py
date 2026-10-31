@@ -197,6 +197,38 @@ def init_db() -> None:
             UNIQUE(plan_id,day_number,slot)
         );
         CREATE INDEX IF NOT EXISTS idx_strategy_items_plan ON strategy_items(plan_id,day_number,slot);
+        CREATE TABLE IF NOT EXISTS production_batches (
+            id TEXT PRIMARY KEY,
+            strategy_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            total_items INTEGER NOT NULL DEFAULT 0,
+            completed_items INTEGER NOT NULL DEFAULT 0,
+            failed_items INTEGER NOT NULL DEFAULT 0,
+            options_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(strategy_id) REFERENCES strategy_plans(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_batches_status ON production_batches(status,created_at);
+        CREATE TABLE IF NOT EXISTS production_batch_items (
+            id TEXT PRIMARY KEY,
+            batch_id TEXT NOT NULL,
+            strategy_item_id TEXT NOT NULL,
+            project_id TEXT,
+            package_id TEXT,
+            voice_job_id TEXT,
+            render_job_id TEXT,
+            status TEXT NOT NULL DEFAULT 'queued',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(batch_id) REFERENCES production_batches(id) ON DELETE CASCADE,
+            FOREIGN KEY(strategy_item_id) REFERENCES strategy_items(id) ON DELETE CASCADE,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_batch_items_batch ON production_batch_items(batch_id,status);
         """)
 
 
@@ -653,3 +685,84 @@ def strategy_item_update(item_id: str, status: str, project_id: str | None = Non
         if not cur.rowcount:
             return None
         return _dict(conn.execute("SELECT * FROM strategy_items WHERE id=?", (item_id,)).fetchone())
+
+
+def production_batch_create(strategy_id: str, strategy_items: list[dict], options: dict) -> dict:
+    now = _now()
+    batch = {"id": str(uuid4()), "strategy_id": strategy_id, "status": "queued",
+             "total_items": len(strategy_items), "completed_items": 0, "failed_items": 0,
+             "options_json": json.dumps(options, ensure_ascii=False), "error": "",
+             "created_at": now, "updated_at": now}
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO production_batches
+            (id,strategy_id,status,total_items,completed_items,failed_items,options_json,error,created_at,updated_at)
+            VALUES (:id,:strategy_id,:status,:total_items,:completed_items,:failed_items,:options_json,:error,:created_at,:updated_at)""",
+            batch,
+        )
+        for source in strategy_items:
+            conn.execute(
+                """INSERT INTO production_batch_items
+                (id,batch_id,strategy_item_id,status,attempts,error,created_at,updated_at)
+                VALUES (?,?,?,'queued',0,'',?,?)""",
+                (str(uuid4()), batch["id"], source["id"], now, now),
+            )
+    return production_batch_get(batch["id"])
+
+
+def production_batch_get(batch_id: str) -> dict | None:
+    with _connect() as conn:
+        batch = _dict(conn.execute("SELECT * FROM production_batches WHERE id=?", (batch_id,)).fetchone())
+        if not batch:
+            return None
+        try:
+            batch["options"] = json.loads(batch.pop("options_json"))
+        except (json.JSONDecodeError, TypeError):
+            batch["options"] = {}
+        batch["items"] = [dict(row) for row in conn.execute(
+            "SELECT * FROM production_batch_items WHERE batch_id=? ORDER BY created_at,id", (batch_id,)
+        ).fetchall()]
+        return batch
+
+
+def production_batch_list(limit: int = 30) -> list[dict]:
+    with _connect() as conn:
+        return [dict(row) for row in conn.execute(
+            "SELECT * FROM production_batches ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()]
+
+
+def production_batch_item_update(item_id: str, status: str, **fields) -> dict | None:
+    allowed = {"project_id", "package_id", "voice_job_id", "render_job_id", "attempts", "error"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    updates["status"] = status
+    updates["updated_at"] = _now()
+    assignments = ", ".join(f"{key}=:{key}" for key in updates)
+    updates["id"] = item_id
+    with _connect() as conn:
+        cur = conn.execute(f"UPDATE production_batch_items SET {assignments} WHERE id=:id", updates)
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM production_batch_items WHERE id=?", (item_id,)).fetchone())
+
+
+def production_batch_refresh(batch_id: str) -> dict | None:
+    with _connect() as conn:
+        counts = conn.execute(
+            """SELECT COUNT(*) total,
+            SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed,
+            SUM(CASE WHEN status IN ('queued','processing') THEN 1 ELSE 0 END) active
+            FROM production_batch_items WHERE batch_id=?""", (batch_id,)
+        ).fetchone()
+        status = "processing" if counts["active"] else ("completed" if counts["failed"] == 0 else ("partial_failure" if counts["completed"] else "failed"))
+        conn.execute(
+            """UPDATE production_batches SET status=?,total_items=?,completed_items=?,failed_items=?,updated_at=? WHERE id=?""",
+            (status, counts["total"] or 0, counts["completed"] or 0, counts["failed"] or 0, _now(), batch_id),
+        )
+    return production_batch_get(batch_id)
+
+
+def production_batch_item_get(item_id: str) -> dict | None:
+    with _connect() as conn:
+        return _dict(conn.execute("SELECT * FROM production_batch_items WHERE id=?", (item_id,)).fetchone())
