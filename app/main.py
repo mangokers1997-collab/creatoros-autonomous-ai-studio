@@ -232,6 +232,30 @@ class StrategyItemUpdate(BaseModel):
     project_id: str | None = None
 
 
+class ExperimentCreateRequest(BaseModel):
+    strategy_item_id: str
+    hypothesis: str = Field(min_length=8, max_length=500)
+    variant_b_title: str = Field(min_length=3, max_length=100)
+    variant_b_hook: str = Field(min_length=3, max_length=300)
+
+
+class ExperimentMetricRequest(BaseModel):
+    views: int = Field(default=0, ge=0, le=1000000000)
+    likes: int = Field(default=0, ge=0, le=1000000000)
+    comments: int = Field(default=0, ge=0, le=1000000000)
+    shares: int = Field(default=0, ge=0, le=1000000000)
+    watch_time_minutes: float = Field(default=0, ge=0, le=100000000000)
+    sample_count: int = Field(default=1, ge=1, le=1000000)
+
+
+class ExperimentEvaluateRequest(BaseModel):
+    minimum_views: int = Field(default=100, ge=10, le=1000000)
+
+
+class ExperimentPromoteRequest(BaseModel):
+    variant_id: str
+
+
 class ProductionBatchRequest(BaseModel):
     strategy_id: str
     max_items: int = Field(default=5, ge=1, le=5)
@@ -610,6 +634,52 @@ def patch_strategy_item(item_id: str, payload: StrategyItemUpdate):
     if not item:
         raise HTTPException(status_code=404, detail="Strategy item not found")
     return item
+
+
+@app.post("/api/v1/experiments", status_code=201)
+def create_content_experiment(payload: ExperimentCreateRequest):
+    try:
+        experiment = database.experiment_create(
+            payload.strategy_item_id, payload.hypothesis,
+            payload.variant_b_title, payload.variant_b_hook,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Strategy item not found")
+    return experiment
+
+
+@app.get("/api/v1/experiments")
+def list_content_experiments(limit: int = Query(default=50, ge=1, le=100)):
+    return database.experiment_list(limit=limit)
+
+
+@app.post("/api/v1/experiments/variants/{variant_id}/metrics")
+def record_experiment_metrics(variant_id: str, payload: ExperimentMetricRequest):
+    row = database.experiment_variant_record(variant_id, payload.model_dump())
+    if not row:
+        raise HTTPException(status_code=404, detail="Experiment variant not found")
+    return row
+
+
+@app.post("/api/v1/experiments/{experiment_id}/evaluate")
+def evaluate_content_experiment(experiment_id: str, payload: ExperimentEvaluateRequest):
+    result = database.experiment_evaluate(experiment_id, payload.minimum_views)
+    if not result:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return result
+
+
+@app.post("/api/v1/experiments/{experiment_id}/promote")
+def promote_experiment_winner(experiment_id: str, payload: ExperimentPromoteRequest):
+    try:
+        result = database.experiment_promote_winner(experiment_id, payload.variant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not result:
+        raise HTTPException(status_code=404, detail="Experiment or variant not found")
+    return result
 
 
 @app.post("/api/v1/production-batches", status_code=202)
