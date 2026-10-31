@@ -467,11 +467,24 @@ def create_script_video(script_id: str, payload: dict, background_tasks: Backgro
     scene_asset_ids = payload.get("scene_asset_ids", [])
     if not isinstance(scene_asset_ids, list) or len(scene_asset_ids) > 12:
         raise HTTPException(status_code=422, detail="scene_asset_ids must be a list with at most 12 entries")
-    job = create_script_video_job(script_id, voice_job_id, scene_asset_ids)
+    motion_preset = str(payload.get('motion_preset', 'cinematic'))
+    if motion_preset not in {'cinematic', 'gentle_zoom', 'pan_left', 'pan_right', 'static'}:
+        raise HTTPException(status_code=422, detail='Unsupported motion preset')
+    job = create_script_video_job(script_id, voice_job_id, scene_asset_ids, motion_preset)
     if not job:
         raise HTTPException(status_code=400, detail="Matching script, voice job, and valid image assets are required")
     background_tasks.add_task(run_script_video_job, job["id"])
     return {**job, "ffmpeg_available": ffmpeg_available()}
+
+
+
+@app.get("/api/v1/scripts/{script_id}/visual-prompts")
+def get_script_visual_prompts(script_id: str):
+    from app.visual_prompt_engine import build_visual_prompt_pack
+    result = build_visual_prompt_pack(script_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return result
 
 
 @app.get("/api/v1/script-video-jobs")
