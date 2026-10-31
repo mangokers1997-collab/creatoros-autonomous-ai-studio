@@ -263,6 +263,34 @@ def init_db() -> None:
             FOREIGN KEY(publish_job_id) REFERENCES publish_jobs(id) ON DELETE SET NULL
         );
         CREATE INDEX IF NOT EXISTS idx_channel_metrics_date ON channel_metrics(channel_id,metric_date);
+        CREATE TABLE IF NOT EXISTS content_experiments (
+            id TEXT PRIMARY KEY,
+            strategy_item_id TEXT NOT NULL,
+            hypothesis TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            winner_variant_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(strategy_item_id) REFERENCES strategy_items(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS experiment_variants (
+            id TEXT PRIMARY KEY,
+            experiment_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            title TEXT NOT NULL,
+            hook TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            likes INTEGER NOT NULL DEFAULT 0,
+            comments INTEGER NOT NULL DEFAULT 0,
+            shares INTEGER NOT NULL DEFAULT 0,
+            watch_time_minutes REAL NOT NULL DEFAULT 0,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(experiment_id) REFERENCES content_experiments(id) ON DELETE CASCADE,
+            UNIQUE(experiment_id,label)
+        );
+        CREATE INDEX IF NOT EXISTS idx_experiment_status ON content_experiments(status,created_at);
         CREATE TABLE IF NOT EXISTS oauth_states (
             state TEXT PRIMARY KEY,
             channel_id TEXT NOT NULL,
@@ -1051,3 +1079,103 @@ def channel_performance_records(channel_id: str | None = None, limit: int = 500)
             item["engagement_rate"] = round(engagements / views * 100, 2) if views else 0
             result.append(item)
         return result
+
+
+def experiment_create(strategy_item_id: str, hypothesis: str, variant_b_title: str, variant_b_hook: str) -> dict | None:
+    now = _now()
+    experiment_id = str(uuid4())
+    with _connect() as conn:
+        item = _dict(conn.execute("SELECT * FROM strategy_items WHERE id=?", (strategy_item_id,)).fetchone())
+        if not item:
+            return None
+        if conn.execute("SELECT 1 FROM content_experiments WHERE strategy_item_id=? AND status='running'", (strategy_item_id,)).fetchone():
+            raise ValueError("An active experiment already exists for this strategy item.")
+        conn.execute(
+            "INSERT INTO content_experiments (id,strategy_item_id,hypothesis,status,created_at,updated_at) VALUES (?,?,?,'running',?,?)",
+            (experiment_id, strategy_item_id, hypothesis, now, now),
+        )
+        for label, title, hook in (("A", item["title"], item["hook"]), ("B", variant_b_title, variant_b_hook)):
+            conn.execute(
+                """INSERT INTO experiment_variants
+                (id,experiment_id,label,title,hook,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (str(uuid4()), experiment_id, label, title, hook, now, now),
+            )
+    return experiment_get(experiment_id)
+
+
+def experiment_get(experiment_id: str) -> dict | None:
+    with _connect() as conn:
+        exp = _dict(conn.execute(
+            """SELECT e.*,i.topic,i.format,i.plan_id,i.status AS strategy_item_status
+            FROM content_experiments e JOIN strategy_items i ON i.id=e.strategy_item_id
+            WHERE e.id=?""", (experiment_id,)
+        ).fetchone())
+        if not exp:
+            return None
+        exp["variants"] = [dict(row) for row in conn.execute(
+            "SELECT * FROM experiment_variants WHERE experiment_id=? ORDER BY label", (experiment_id,)
+        ).fetchall()]
+        for variant in exp["variants"]:
+            views = variant["views"]
+            interactions = variant["likes"] + variant["comments"] + variant["shares"]
+            variant["engagement_rate"] = round(interactions / views * 100, 2) if views else 0
+            variant["average_watch_minutes"] = round(variant["watch_time_minutes"] / variant["sample_count"], 2) if variant["sample_count"] else 0
+        return exp
+
+
+def experiment_list(limit: int = 50) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT id FROM content_experiments ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    return [experiment_get(row["id"]) for row in rows]
+
+
+def experiment_variant_record(variant_id: str, data: dict) -> dict | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """UPDATE experiment_variants SET views=views+?,likes=likes+?,comments=comments+?,
+            shares=shares+?,watch_time_minutes=watch_time_minutes+?,sample_count=sample_count+?,
+            updated_at=? WHERE id=?""",
+            (data["views"], data["likes"], data["comments"], data["shares"],
+             data["watch_time_minutes"], data["sample_count"], _now(), variant_id),
+        )
+        if not cur.rowcount:
+            return None
+        row = _dict(conn.execute("SELECT * FROM experiment_variants WHERE id=?", (variant_id,)).fetchone())
+        views = row["views"]
+        row["engagement_rate"] = round((row["likes"]+row["comments"]+row["shares"])/views*100,2) if views else 0
+        return row
+
+
+def experiment_evaluate(experiment_id: str, minimum_views: int = 100) -> dict | None:
+    exp = experiment_get(experiment_id)
+    if not exp:
+        return None
+    variants = exp["variants"]
+    if len(variants) != 2 or any(v["views"] < minimum_views for v in variants):
+        return {"experiment": exp, "status": "insufficient_data", "winner": None,
+                "message": f"Each variant needs at least {minimum_views} views before comparison."}
+    ranked = sorted(variants, key=lambda v: (v["engagement_rate"], v["average_watch_minutes"], v["views"]), reverse=True)
+    first, second = ranked
+    # Require a meaningful separation to avoid declaring noise a winner.
+    if first["engagement_rate"] <= second["engagement_rate"] * 1.05 and first["average_watch_minutes"] <= second["average_watch_minutes"] * 1.05:
+        return {"experiment": exp, "status": "no_clear_winner", "winner": None,
+                "message": "The observed difference is too small; collect more data or test a new hypothesis."}
+    return {"experiment": exp, "status": "winner_found", "winner": first,
+            "message": "This is a directional winner, not statistical significance."}
+
+
+def experiment_promote_winner(experiment_id: str, variant_id: str) -> dict | None:
+    now = _now()
+    with _connect() as conn:
+        exp = _dict(conn.execute("SELECT * FROM content_experiments WHERE id=?", (experiment_id,)).fetchone())
+        variant = _dict(conn.execute("SELECT * FROM experiment_variants WHERE id=? AND experiment_id=?", (variant_id, experiment_id)).fetchone())
+        if not exp or not variant:
+            return None
+        if exp["status"] != "running":
+            raise ValueError("Experiment is no longer active.")
+        conn.execute("UPDATE strategy_items SET title=?,hook=?,status='planned' WHERE id=?",
+                     (variant["title"], variant["hook"], exp["strategy_item_id"]))
+        conn.execute("UPDATE content_experiments SET status='promoted',winner_variant_id=?,updated_at=? WHERE id=?",
+                     (variant_id, now, experiment_id))
+    return experiment_get(experiment_id)
