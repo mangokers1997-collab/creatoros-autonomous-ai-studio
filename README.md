@@ -519,3 +519,10 @@ A completed local Piper voice job can be rendered into a 9:16 MP4 using FFmpeg:
 - `GET /api/v1/script-video-jobs/{id}/download` for the MP4.
 
 The current renderer creates a 1080×1920 vertical video with timed scene text, burned-in SRT captions, and the selected voice WAV. It uses a solid-color background; it does not generate or fetch visual footage. Add licensed images/video in a later milestone. Rendering requires FFmpeg and adequate CPU/disk space. Human preview and approval remain required.
+
+
+## Visual Asset Studio — per-scene image upload
+
+Video Studio accepts up to 12 user-supplied JPG, PNG, or WEBP images and maps them in storyboard order. Upload exactly one image per scene, or upload none to use the fallback background. Images are stored in the media asset library; FFmpeg crops each still to 1080×1920, assembles the clips, adds saved narration, and burns in SRT captions.
+
+Use only images you own or have permission to use. This is a still-image slideshow workflow, not AI image generation, stock search, animation, or motion control. The existing upload endpoint enforces a 20 MB per-file limit.
