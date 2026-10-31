@@ -122,7 +122,10 @@ def auth_setup(payload: AuthCredentials):
 
 @app.post("/api/v1/auth/login")
 def auth_login_route(payload: AuthCredentials):
-    result = auth_login(payload.username, payload.password)
+    try:
+        result = auth_login(payload.username, payload.password)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     if not result:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     user, token = result
