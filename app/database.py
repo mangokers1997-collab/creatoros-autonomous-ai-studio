@@ -1014,3 +1014,39 @@ def channel_analytics_summary(channel_id: str | None = None) -> dict:
         item.pop("currency_count", None)
         channel_rows.append(item)
     return {"totals": result, "channels": channel_rows, "daily": [dict(row) for row in reversed(daily)], "revenue_is_estimate": False}
+
+
+def channel_performance_records(channel_id: str | None = None, limit: int = 500) -> list[dict]:
+    query = """
+        SELECT p.id AS project_id, p.title, p.niche, p.format, p.brief,
+               c.id AS channel_id, c.name AS channel_name, c.platform,
+               c.target_market, j.id AS publish_job_id, j.published_at,
+               MIN(m.metric_date) AS first_metric_date,
+               MAX(m.metric_date) AS last_metric_date,
+               COUNT(m.id) AS metric_snapshots,
+               SUM(m.views) AS views,
+               SUM(m.watch_time_minutes) AS watch_time_minutes,
+               SUM(m.likes) AS likes, SUM(m.comments) AS comments,
+               SUM(m.shares) AS shares,
+               SUM(m.subscribers_gained) AS subscribers_gained
+        FROM channel_metrics m
+        JOIN publish_jobs j ON j.id=m.publish_job_id
+        JOIN projects p ON p.id=j.project_id
+        JOIN channels c ON c.id=j.channel_id
+    """
+    params = []
+    if channel_id:
+        query += " WHERE c.id=?"
+        params.append(channel_id)
+    query += " GROUP BY j.id ORDER BY views DESC LIMIT ?"
+    params.append(limit)
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            views = item["views"] or 0
+            engagements = (item["likes"] or 0) + (item["comments"] or 0) + (item["shares"] or 0)
+            item["engagement_rate"] = round(engagements / views * 100, 2) if views else 0
+            result.append(item)
+        return result
