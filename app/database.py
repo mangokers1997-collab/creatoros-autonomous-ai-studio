@@ -998,6 +998,7 @@ def channel_analytics_summary(channel_id: str | None = None) -> dict:
     engagement = result["likes"] + result["comments"] + result["shares"]
     result["engagements"] = engagement
     result["engagement_rate"] = round(engagement / result["views"] * 100, 2) if result["views"] else 0
+    with _connect() as conn:
         currency_query = "SELECT DISTINCT revenue_currency FROM channel_metrics WHERE revenue_amount>0" + (" AND channel_id=?" if channel_id else "")
         currency_rows = conn.execute(currency_query, ([channel_id] if channel_id else [])).fetchall()
     currencies = {row["revenue_currency"] for row in currency_rows}
