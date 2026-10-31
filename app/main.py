@@ -36,6 +36,7 @@ from app.youtube_adapter import (
 from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.control_center import get_control_center
 from app.performance_optimizer import build_optimization_report
+from app.content_brain import build_content_brain_report, create_brain_strategy
 from app.script_engine import generate_script, list_scripts, get_script, update_script, delete_script
 from app.script_voice_engine import available as script_voice_available, create_job as create_script_voice_job, get_job as get_script_voice_job, list_jobs as list_script_voice_jobs, run_job as run_script_voice_job, audio_path as script_voice_audio_path
 from app.script_video_engine import create_job as create_script_video_job, get_job as get_script_video_job, list_jobs as list_script_video_jobs, run_job as run_script_video_job, video_path as script_video_path
@@ -215,6 +216,24 @@ class IntelligenceRequest(BaseModel):
     language: str = Field(default="", max_length=12)
     seed_keywords: list[str] = Field(default_factory=list, max_length=30)
     competitor_queries: list[str] = Field(default_factory=list, max_length=5)
+
+
+class ContentBrainRequest(BaseModel):
+    market: str = Field(default="ID", min_length=2, max_length=2)
+    niche: str = Field(default="personal finance", min_length=2, max_length=80)
+    language: str = Field(default="", max_length=12)
+    channel_id: str | None = None
+    limit: int = Field(default=12, ge=1, le=90)
+
+
+class ContentBrainPlanRequest(BaseModel):
+    market: str = Field(default="ID", min_length=2, max_length=2)
+    niche: str = Field(default="personal finance", min_length=2, max_length=80)
+    language: str = Field(default="id", max_length=12)
+    channel_id: str | None = None
+    start_date: str = Field(default_factory=lambda: __import__("datetime").date.today().isoformat())
+    days: int = Field(default=30, ge=1, le=90)
+    videos_per_day: int = Field(default=1, ge=1, le=5)
 
 
 class StrategyGenerateRequest(BaseModel):
@@ -589,6 +608,34 @@ def list_intelligence_reports(
     limit: int = Query(default=30, ge=1, le=100),
 ):
     return get_intelligence_reports(market=market, niche=niche, limit=limit)
+
+
+@app.post("/api/v1/content-brain/analyze")
+def content_brain_analyze(payload: ContentBrainRequest):
+    try:
+        return build_content_brain_report(
+            payload.market, payload.niche, payload.language,
+            payload.channel_id, payload.limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.post("/api/v1/content-brain/strategy", status_code=201)
+def content_brain_strategy(payload: ContentBrainPlanRequest):
+    if payload.channel_id:
+        channel = channel_get(payload.channel_id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+        if channel["target_market"].upper() != payload.market.upper():
+            raise HTTPException(status_code=422, detail="Channel market does not match requested market")
+    try:
+        return create_brain_strategy(
+            payload.market, payload.niche, payload.language, payload.channel_id,
+            payload.start_date, payload.days, payload.videos_per_day,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.post("/api/v1/strategies/generate", status_code=201)
