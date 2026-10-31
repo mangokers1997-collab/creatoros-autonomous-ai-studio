@@ -509,3 +509,13 @@ Saved Script Studio drafts can be sent directly to the local Piper TTS bridge:
 - `GET /api/v1/script-voice-jobs/{id}/subtitles` — retrieve SRT subtitles.
 
 Configure `PIPER_BIN` and `PIPER_MODEL` in the private server environment. The model file must be downloaded separately and its license checked. Without a configured Piper binary and compatible ONNX voice model, the job reports a clear failure; the app does not silently use a paid cloud voice service. Audio generation is local and resource use depends on the host CPU/RAM. This is a single configured model per server in this milestone; per-language voice selection is not yet implemented.
+
+
+## Video Studio — Script Studio to vertical MP4
+
+A completed local Piper voice job can be rendered into a 9:16 MP4 using FFmpeg:
+- `POST /api/v1/scripts/{script_id}/video` with JSON `{"voice_job_id":"..."}`.
+- `GET /api/v1/script-video-jobs` and `GET /api/v1/script-video-jobs/{id}` for progress.
+- `GET /api/v1/script-video-jobs/{id}/download` for the MP4.
+
+The current renderer creates a 1080×1920 vertical video with timed scene text, burned-in SRT captions, and the selected voice WAV. It uses a solid-color background; it does not generate or fetch visual footage. Add licensed images/video in a later milestone. Rendering requires FFmpeg and adequate CPU/disk space. Human preview and approval remain required.
