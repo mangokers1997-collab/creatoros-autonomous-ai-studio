@@ -22,6 +22,33 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Private owner authentication (MVP)
+
+CreatorOS now supports one private owner account. On first startup, open `/dashboard/`; the first-run screen lets you create the owner username and password. Username must be 3–40 characters using letters, numbers, underscore, or hyphen. Password must be 12–128 characters. Save the password safely: this MVP does not include password reset or multi-user invitations.
+
+Security controls included:
+- Passwords are stored as PBKDF2-HMAC-SHA256 hashes with a unique random salt (310,000 iterations); plaintext passwords are never stored.
+- Session tokens are cryptographically random; only SHA-256 token hashes are stored in SQLite.
+- HttpOnly, SameSite=Strict session cookie with configurable expiry (`CREATOROS_SESSION_DAYS`, default 7 days).
+- Persistent failed-login throttling: five failures for a username trigger a 15-minute lockout.
+- Auth middleware protects the dashboard, API endpoints, file downloads, and API docs.
+- Mutating authenticated API requests require the `X-CreatorOS-Request: 1` same-origin header.
+- Only the initial setup, login, logout, auth status, and signed YouTube OAuth callback are exempt from the session requirement. Initial setup can create only the first owner.
+
+### Production configuration
+
+Set `CREATOROS_COOKIE_SECURE=true` when serving through HTTPS. Keep it false only for local HTTP development. Terminate TLS at a trusted reverse proxy, restrict network access, back up the database and encrypted token directory, and never commit `.env`, passwords, OAuth secrets, Fernet keys, or token files.
+
+The app should not be considered production-audited. This MVP does not yet include password reset, multi-factor authentication, multi-user roles, external security testing, or an account recovery flow. The current single-owner setup is intended for a private deployment.
+
+### Auth endpoints
+
+- `GET /api/v1/auth/status` — whether first-time setup is required.
+- `POST /api/v1/auth/setup` — create the first owner (one-time).
+- `POST /api/v1/auth/login` — create a session.
+- `POST /api/v1/auth/logout` — revoke the current session.
+- `GET /api/v1/auth/me` — current authenticated owner.
+
 ## Web Control Center (frontend MVP)
 
 A responsive single-page dashboard is available at `web/index.html` and is served by FastAPI at:
