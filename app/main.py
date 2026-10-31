@@ -9,7 +9,7 @@ from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
 from app.database import research_create, research_list, research_get, research_source_create
 from app.database import content_package_list, media_asset_create, media_asset_get, media_asset_list
-from app.database import render_job_create, render_job_get, render_job_list
+from app.database import render_job_create, render_job_get, render_job_list, render_scene_assets_replace
 from app.database import voice_job_create, voice_job_get, voice_job_list
 from app.content_engine import generate_content_package
 from app.renderer import MEDIA_ROOT, RENDER_ROOT, ffmpeg_available, run_render_job
@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -72,6 +72,7 @@ class RenderRequest(BaseModel):
     image_asset_id: str | None = None
     audio_asset_id: str | None = None
     duration_seconds: int = Field(default=48, ge=8, le=180)
+    scene_asset_ids: list[str | None] = Field(default_factory=list, max_length=12)
 
 
 class ResearchSourceCreate(BaseModel):
@@ -88,7 +89,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "0.6.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "0.7.0"}
 
 
 @app.get("/api/v1/channels")
@@ -240,6 +241,25 @@ def create_render(project_id: str, payload: RenderRequest, background_tasks: Bac
         "audio_asset_id": payload.audio_asset_id,
         "duration_seconds": payload.duration_seconds,
     })
+    scenes = packages[[item["id"] for item in packages].index(payload.package_id)].get("storyboard_json", [])
+    if not scenes:
+        scenes = [{"on_screen_text": payload.package_id, "narration": "", "visual_direction": ""}]
+    if len(scenes) > 12:
+        raise HTTPException(status_code=400, detail="A maximum of 12 storyboard scenes is supported.")
+    if payload.scene_asset_ids and len(payload.scene_asset_ids) != len(scenes):
+        raise HTTPException(status_code=400, detail="scene_asset_ids must contain one entry per storyboard scene.")
+    scene_rows = []
+    for index, scene in enumerate(scenes):
+        asset_id = payload.scene_asset_ids[index] if payload.scene_asset_ids else payload.image_asset_id
+        scene_image = media_asset_get(asset_id) if asset_id else None
+        if asset_id and (not scene_image or scene_image["media_type"] != "image"):
+            raise HTTPException(status_code=400, detail=f"Scene {index + 1} image must reference an uploaded image.")
+        scene_rows.append({
+            "image_asset_id": asset_id,
+            "caption": scene.get("narration") or scene.get("on_screen_text") or "",
+            "visual_direction": scene.get("visual_direction") or "",
+        })
+    render_scene_assets_replace(job["id"], scene_rows)
     background_tasks.add_task(run_render_job, job["id"])
     return {**job, "ffmpeg_available": ffmpeg_available()}
 
@@ -326,7 +346,7 @@ def download_render(job_id: str):
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "local-voice-and-video-production",
+        "phase": "visual-story-engine",
         "database": "sqlite",
         "ai_provider": "local_piper_available" if piper_available() else "local_piper_not_configured",
         "render_engine": "ffmpeg_available" if ffmpeg_available() else "ffmpeg_not_installed",
