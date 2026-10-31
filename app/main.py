@@ -7,6 +7,8 @@ from uuid import uuid4
 from app.database import init_db, channel_create, channel_list, channel_delete
 from app.database import project_create, project_list, project_get, project_update_status
 from app.database import research_create, research_list, research_get, research_source_create
+from app.database import content_package_list
+from app.content_engine import generate_content_package
 
 ChannelPlatform = Literal["youtube", "instagram", "facebook", "tiktok"]
 ProjectStatus = Literal["idea", "research", "script", "storyboard", "ready_for_review", "approved", "rendering", "rendered", "scheduled", "published", "failed"]
@@ -21,7 +23,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -74,7 +76,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "creatoros-api", "version": "0.2.0"}
+    return {"status": "ok", "service": "creatoros-api", "version": "0.4.0"}
 
 
 @app.get("/api/v1/channels")
@@ -159,10 +161,25 @@ def add_research_source(brief_id: str, payload: ResearchSourceCreate):
     return source
 
 
+@app.post("/api/v1/projects/{project_id}/generate-package", status_code=201)
+def generate_project_package(project_id: str):
+    package = generate_content_package(project_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return package
+
+
+@app.get("/api/v1/projects/{project_id}/packages")
+def list_project_packages(project_id: str):
+    if not project_get(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return content_package_list(project_id)
+
+
 @app.get("/api/v1/system/status")
 def system_status():
     return {
-        "phase": "research-workspace",
+        "phase": "content-intelligence-engine",
         "database": "sqlite",
         "ai_provider": "not_configured",
         "render_engine": "not_configured",
