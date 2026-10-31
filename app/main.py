@@ -52,7 +52,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CreatorOS API",
     description="Zero-budget-first API foundation for a multi-channel content studio.",
-    version="1.1.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -61,6 +61,11 @@ if WEB_ROOT.is_dir():
     app.mount("/dashboard", StaticFiles(directory=str(WEB_ROOT), html=True), name="dashboard")
 
 
+
+
+class AuthCredentials(BaseModel):
+    username: str = Field(min_length=3, max_length=40)
+    password: str = Field(min_length=12, max_length=128)
 
 
 PUBLIC_AUTH_PATHS = {
@@ -137,11 +142,6 @@ def auth_logout(request: Request):
 @app.get("/api/v1/auth/me")
 def auth_me(request: Request):
     return {"user": request.state.user}
-
-
-class AuthCredentials(BaseModel):
-    username: str = Field(min_length=3, max_length=40)
-    password: str = Field(min_length=12, max_length=128)
 
 
 class ChannelCreate(BaseModel):
