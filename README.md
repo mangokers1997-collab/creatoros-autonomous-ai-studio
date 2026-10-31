@@ -22,6 +22,29 @@ Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
 
+## Production Automation & Batch Pipeline (MVP)
+
+Turn saved strategy calendar entries into content projects and draft packages in sequential batches of up to five. Each item creates a project, generates its script/storyboard/subtitles package, and can optionally synthesize local voice with Piper and render a portrait MP4 with FFmpeg. If a requested local dependency is unavailable, the item is marked failed with a diagnostic; retry it after fixing the setup. Rendering without supplied images uses the renderer's generated background. The pipeline never publishes automatically.
+
+- `POST /api/v1/production-batches` — queue up to five planned items from a strategy.
+- `GET /api/v1/production-batches` — list batches.
+- `GET /api/v1/production-batches/{batch_id}` — inspect batch and item statuses.
+- `POST /api/v1/production-batch-items/{item_id}/retry` — retry a failed item.
+
+Example request:
+
+```json
+{
+  "strategy_id": "YOUR_STRATEGY_ID",
+  "max_items": 5,
+  "generate_voice": true,
+  "render_video": true,
+  "duration_seconds": 48
+}
+```
+
+The batch worker runs sequentially through FastAPI background tasks, suitable for a small local MVP only. It is not a durable distributed queue: a process restart can interrupt work. Use a dedicated worker/queue such as RQ or Celery before production-scale runs. Voice and video depend on Piper plus a licensed voice model, and FFmpeg with the subtitles/libass filter. Human review remains mandatory before upload.
+
 ## AI Content Strategy Engine (30-day planner)
 
 Generate and persist a 1–90 day content calendar using saved trend items and saved intelligence reports, with an evergreen fallback when no research data exists. The MVP creates up to five short-form content briefs per day, each with a topic, angle, title, and localized hook. It can associate a plan with a channel. It is a deterministic planning engine, not an LLM or a performance prediction system.
@@ -147,6 +170,10 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | GET | `/api/v1/strategies` | List strategy plans |
 | GET | `/api/v1/strategies/{plan_id}` | Get plan and calendar items |
 | PATCH | `/api/v1/strategy-items/{item_id}` | Update a calendar item's status |
+| POST | `/api/v1/production-batches` | Queue up to five strategy items for production |
+| GET | `/api/v1/production-batches` | List production batches |
+| GET | `/api/v1/production-batches/{batch_id}` | Get batch progress and item details |
+| POST | `/api/v1/production-batch-items/{item_id}/retry` | Retry a failed production item |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
 
