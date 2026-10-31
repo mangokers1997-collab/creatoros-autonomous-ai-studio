@@ -2,7 +2,7 @@
 
 Zero-budget-first workspace for planning, producing, reviewing, and publishing faceless content across multiple channels and target markets.
 
-## Current milestone: Multi-scene visual story production
+## Current milestone: Public trend ingestion and topic scoring
 
 The FastAPI backend now includes SQLite persistence, channel management, content project creation, project filtering, and workflow status updates.
 
@@ -21,6 +21,16 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/docs for the interactive API explorer.
 
 Set `CREATOROS_DB_PATH` to change the SQLite database file location. The default is `creatoros.db` in the project directory.
+
+## Content Research Automation (free RSS MVP)
+
+CreatorOS can fetch the public Google Trends Trending Now RSS feed for supported markets (US, GB, CA, AU, JP, AE, IN, ID), parse trend titles, approximate traffic labels, publication dates and source links, then persist results in SQLite. A lightweight heuristic score combines the traffic bucket with optional niche/keyword text matches. This is a prioritization hint, not a search-volume metric, virality prediction, or ad-revenue estimate.
+
+- `GET /api/v1/trends/markets` — list supported market codes.
+- `POST /api/v1/trends/refresh` — fetch and save a market feed. JSON example: `{"market":"US","niche":"personal finance","keywords":["budget","saving"]}`.
+- `GET /api/v1/trends?market=US&niche=personal%20finance` — read saved trend items.
+
+This RSS source is public and requires no API key, but it is not a guaranteed uptime service. Fetches require outbound internet access from the CreatorOS host. Keep refresh frequency modest and cache results; do not scrape restricted pages or infer private user data. Google Trends RSS supplies only a limited set of currently trending searches and approximate traffic labels.
 
 ## Research workspace
 
@@ -83,6 +93,9 @@ Render request fields: `package_id`, optional `image_asset_id`, optional `audio_
 | POST | `/api/v1/projects/{id}/generate-package` | Generate a first-draft content package |
 | GET | `/api/v1/projects/{id}/packages` | List saved content packages |
 | GET / POST | `/api/v1/research` | List or create research briefs |
+| GET | `/api/v1/trends/markets` | List supported trend markets |
+| POST | `/api/v1/trends/refresh` | Fetch and store a public RSS trend feed |
+| GET | `/api/v1/trends` | List stored trend signals |
 | GET | `/api/v1/research/{id}` | Get a research brief with its sources |
 | POST | `/api/v1/research/{id}/sources` | Attach a source and observation |
 
@@ -110,4 +123,4 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 
 ## Current limitations
 
-This is an early backend. LLM-based generation, live trend retrieval, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, advanced trend enrichment, AI-generated footage and character motion control, social account connections, scheduling, and actual publishing are not implemented yet.
