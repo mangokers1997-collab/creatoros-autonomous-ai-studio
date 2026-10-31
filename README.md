@@ -2,7 +2,7 @@
 
 Zero-budget-first workspace for planning, producing, reviewing, and publishing faceless content across multiple channels and target markets.
 
-## Current milestone: Persistent data + content workflow API
+## Current milestone: Local voice and video production foundation
 
 The FastAPI backend now includes SQLite persistence, channel management, content project creation, project filtering, and workflow status updates.
 
@@ -47,6 +47,22 @@ Install FFmpeg separately and ensure the `ffmpeg` executable is available on PAT
 
 Render requests accept `package_id`, optional `image_asset_id`, optional `audio_asset_id`, and `duration_seconds` (8–180). If FFmpeg is missing, the render job is marked failed with an installation hint. The API uses FastAPI background tasks; for sustained production workloads, replace this with a dedicated worker queue.
 
+## Local AI Voice & Timed Subtitle Engine
+
+CreatorOS can generate narration locally using Piper TTS. Install Piper, download a compatible ONNX voice model, and configure environment variables:
+
+- `PIPER_BIN` — Piper executable name or path (default: `piper`).
+- `PIPER_MODEL` — absolute path to the downloaded `.onnx` voice model.
+
+This is offline after the executable and model are installed. Voice availability and quality depend on the selected model; Indonesian and English require compatible models. Models are not bundled in this repository and must be downloaded separately. Check each model's license before commercial use.
+
+- `POST /api/v1/projects/{project_id}/packages/{package_id}/voice` — queue local narration synthesis.
+- `GET /api/v1/voice-jobs/{job_id}` — check synthesis status.
+- `GET /api/v1/voice-jobs/{job_id}/audio` — download generated WAV.
+- `GET /api/v1/voice-jobs/{job_id}/subtitles` — download SRT subtitles timed from the duration of each generated narration chunk.
+
+The engine synthesizes paragraph-sized chunks and measures their actual WAV durations for subtitle timing. This is chunk-level timing, not word-level forced alignment. The service reports a failed job if Piper or its model is not configured; it does not silently call a paid cloud API.
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
@@ -88,4 +104,4 @@ Project workflow states: `idea`, `research`, `script`, `storyboard`, `ready_for_
 
 ## Current limitations
 
-This is an early backend. LLM-based generation, live trend retrieval, multi-scene motion editing, AI voice generation, social account connections, scheduling, and actual publishing are not implemented yet.
+This is an early backend. LLM-based generation, live trend retrieval, multi-scene motion editing, social account connections, scheduling, and actual publishing are not implemented yet.
