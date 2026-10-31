@@ -9,6 +9,7 @@ from app.publishing_worker import worker_status
 from app.publishing_engine import publishing_adapter_status
 from app.renderer import ffmpeg_available
 from app.voice_engine import piper_available
+from app.youtube_adapter import youtube_connection_status
 
 
 def _db_path() -> Path:
@@ -76,7 +77,14 @@ def get_control_center() -> dict:
         credentials = _rows(conn, "SELECT channel_id,provider,updated_at FROM platform_credentials")
         oauth_connected = {(item["channel_id"], item["provider"]): item["updated_at"] for item in credentials}
         for channel in channel_items:
-            channel["connection"] = "connected" if (channel["id"], channel["platform"]) in oauth_connected else "not_connected"
+            if channel["platform"] == "youtube":
+                try:
+                    connected = youtube_connection_status(channel["id"])["connected"]
+                except (ValueError, RuntimeError):
+                    connected = False
+            else:
+                connected = (channel["id"], channel["platform"]) in oauth_connected
+            channel["connection"] = "connected" if connected else "not_connected"
             channel["credential_updated_at"] = oauth_connected.get((channel["id"], channel["platform"]))
         return {
             "generated_at": now,
