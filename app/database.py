@@ -1339,7 +1339,8 @@ def production_orchestration_claim_next(worker_id: str, lease_until: str, stale_
         )
         if not cur.rowcount:
             return None
-        return production_orchestration_get(row["id"])
+        claimed_id = row["id"]
+    return production_orchestration_get(claimed_id)
 
 
 def production_orchestration_heartbeat(orchestration_id: str, worker_id: str, lease_until: str) -> bool:
