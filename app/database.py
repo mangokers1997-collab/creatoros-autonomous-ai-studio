@@ -330,6 +330,19 @@ def init_db() -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(publish_jobs)").fetchall()}
         if "attempts" not in columns:
             conn.execute("ALTER TABLE publish_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        orchestration_columns = {row["name"] for row in conn.execute("PRAGMA table_info(production_orchestrations)").fetchall()}
+        for name, definition in {
+            "attempts": "INTEGER NOT NULL DEFAULT 0",
+            "worker_id": "TEXT",
+            "lease_until": "TEXT",
+            "last_error": "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if name not in orchestration_columns:
+                conn.execute(f"ALTER TABLE production_orchestrations ADD COLUMN {name} {definition}")
+        item_columns = {row["name"] for row in conn.execute("PRAGMA table_info(production_orchestration_items)").fetchall()}
+        if "attempts" not in item_columns:
+            conn.execute("ALTER TABLE production_orchestration_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+
 
 
 
@@ -1278,3 +1291,86 @@ def production_orchestration_refresh(orchestration_id: str) -> dict | None:
     return production_orchestration_get(orchestration_id)
 
 
+
+
+def production_orchestration_claim_next(worker_id: str, lease_until: str, stale_before: str, max_attempts: int = 3) -> dict | None:
+    """Atomically claim one queued orchestration; reclaim expired leases safely."""
+    with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        stale = conn.execute(
+            "SELECT id,attempts FROM production_orchestrations WHERE status='processing' AND (lease_until IS NULL OR lease_until<?)",
+            (stale_before,),
+        ).fetchall()
+        for row in stale:
+            if int(row["attempts"] or 0) >= max_attempts:
+                conn.execute(
+                    "UPDATE production_orchestrations SET status='failed',worker_id=NULL,lease_until=NULL,last_error='Worker lease expired too many times.',updated_at=? WHERE id=?",
+                    (_now(), row["id"]),
+                )
+                conn.execute(
+                    "UPDATE production_orchestration_items SET status='failed',error='Worker lease expired too many times.',updated_at=? WHERE orchestration_id=? AND status IN ('queued','processing')",
+                    (_now(), row["id"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE production_orchestrations SET status='queued',worker_id=NULL,lease_until=NULL,last_error='Recovered after an expired worker lease.',updated_at=? WHERE id=?",
+                    (_now(), row["id"]),
+                )
+                conn.execute(
+                    "UPDATE production_orchestration_items SET status='queued',error='Recovered after worker interruption.',updated_at=? WHERE orchestration_id=? AND status='processing'",
+                    (_now(), row["id"]),
+                )
+        active = conn.execute(
+            "SELECT 1 FROM production_orchestrations WHERE status='processing' AND lease_until>=? LIMIT 1",
+            (stale_before,),
+        ).fetchone()
+        if active:
+            return None
+        row = conn.execute(
+            "SELECT id FROM production_orchestrations WHERE status='queued' ORDER BY created_at,id LIMIT 1"
+        ).fetchone()
+        if not row:
+            return None
+        cur = conn.execute(
+            """UPDATE production_orchestrations
+            SET status='processing',attempts=attempts+1,worker_id=?,lease_until=?,last_error='',updated_at=?
+            WHERE id=? AND status='queued'""",
+            (worker_id, lease_until, _now(), row["id"]),
+        )
+        if not cur.rowcount:
+            return None
+        return production_orchestration_get(row["id"])
+
+
+def production_orchestration_heartbeat(orchestration_id: str, worker_id: str, lease_until: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE production_orchestrations SET lease_until=?,updated_at=? WHERE id=? AND status='processing' AND worker_id=?",
+            (lease_until, _now(), orchestration_id, worker_id),
+        )
+        return cur.rowcount > 0
+
+
+def production_orchestration_finish(orchestration_id: str, worker_id: str, error: str = "") -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT status FROM production_orchestrations WHERE id=? AND worker_id=?",
+            (orchestration_id, worker_id),
+        ).fetchone()
+        if not row:
+            return None
+        refreshed = production_orchestration_refresh(orchestration_id)
+        status = refreshed["status"] if refreshed else "failed"
+        conn.execute(
+            "UPDATE production_orchestrations SET status=?,worker_id=NULL,lease_until=NULL,last_error=?,updated_at=? WHERE id=? AND worker_id=?",
+            (status, error[:1800], _now(), orchestration_id, worker_id),
+        )
+    return production_orchestration_get(orchestration_id)
+
+
+def production_worker_snapshot() -> dict:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT status,COUNT(*) AS total FROM production_orchestrations GROUP BY status"
+        ).fetchall()
+        return {row["status"]: row["total"] for row in rows}
