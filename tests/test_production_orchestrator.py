@@ -22,13 +22,13 @@ class ProductionOrchestratorTests(unittest.TestCase):
         ])
         self.assertEqual(create.call_args.args[1]["execution_mode"], "sequential_single_worker")
 
-    @patch("app.production_orchestrator.database.strategy_plan_get", return_value={
-        "id":"p1","name":"Finance","channel_id":"c1","items":[{"status":"planned"}]
-    })
+    @patch("app.production_orchestrator.database.strategy_plan_get", side_effect=[
+        {"id":"p1","name":"Finance","channel_id":"c1","items":[{"status":"planned"}]},
+        {"id":"p1b","name":"Finance alternate","channel_id":"c1","items":[{"status":"planned"}]},
+    ])
     def test_rejects_two_plans_for_same_channel(self, _get):
         with self.assertRaises(ValueError):
             create_production_orchestration(["p1","p1b"], 2, False, False, 48)
-
     @patch("app.production_orchestrator.database.strategy_plan_get", return_value={
         "id":"p1","name":"General","channel_id":None,"items":[{"status":"planned"}]
     })
