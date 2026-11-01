@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from app import database
 from app.production_orchestrator import run_production_orchestration
+from app.resource_scheduler import resource_snapshot
 
 log = logging.getLogger("creatoros.production_worker")
 _stop = threading.Event()
@@ -35,6 +36,7 @@ def worker_status() -> dict:
         "poll_seconds": max(2, min(60, int(os.getenv("CREATOROS_PRODUCTION_POLL_SECONDS", "5")))),
         "lease_seconds": max(30, min(600, int(os.getenv("CREATOROS_PRODUCTION_LEASE_SECONDS", "120")))),
         "queue": database.production_worker_snapshot(),
+        "resources": resource_snapshot(),
     }
 
 
@@ -91,6 +93,11 @@ def _loop() -> None:
     poll = max(2, min(60, int(os.getenv("CREATOROS_PRODUCTION_POLL_SECONDS", "5"))))
     while not _stop.is_set():
         try:
+            resources = resource_snapshot()
+            if not resources["can_start_job"]:
+                log.info("Production worker paused by resource guard: %s", resources["blocked_reasons"])
+                _stop.wait(max(poll, 15))
+                continue
             worked = _run_once()
         except Exception:
             log.exception("Production worker iteration failed.")
