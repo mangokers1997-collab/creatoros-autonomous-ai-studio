@@ -23,7 +23,9 @@ from app.trend_engine import fetch_google_trends, MARKETS
 from app.intelligence_engine import analyze_content_opportunities, get_intelligence_reports
 from app.strategy_engine import generate_strategy, get_strategy, list_strategies, update_strategy_item
 from app.database import production_batch_create, production_batch_get, production_batch_list, production_batch_refresh
+from app.database import production_orchestration_get
 from app.pipeline_engine import run_production_batch, retry_production_batch_item
+from app.production_orchestrator import create_production_orchestration, run_production_orchestration, get_production_orchestrations
 from app.publishing_engine import (
     create_publish_draft, approve_publish_job, cancel_publish_job,
     list_publish_jobs, get_publish_job, publishing_adapter_status, retry_publish_job,
@@ -281,6 +283,14 @@ class ExperimentEvaluateRequest(BaseModel):
 
 class ExperimentPromoteRequest(BaseModel):
     variant_id: str
+
+
+class ProductionOrchestrationRequest(BaseModel):
+    strategy_ids: list[str] = Field(min_length=1, max_length=25)
+    max_items: int = Field(default=5, ge=1, le=5)
+    generate_voice: bool = True
+    render_video: bool = True
+    duration_seconds: int = Field(default=48, ge=8, le=180)
 
 
 class ProductionBatchRequest(BaseModel):
@@ -751,6 +761,32 @@ def promote_experiment_winner(experiment_id: str, payload: ExperimentPromoteRequ
     if not result:
         raise HTTPException(status_code=404, detail="Experiment or variant not found")
     return result
+
+
+@app.post("/api/v1/production-orchestrations", status_code=202)
+def create_production_orchestration_route(payload: ProductionOrchestrationRequest, background_tasks: BackgroundTasks):
+    try:
+        orchestration = create_production_orchestration(
+            payload.strategy_ids, payload.max_items,
+            payload.generate_voice, payload.render_video, payload.duration_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(run_production_orchestration, orchestration["id"])
+    return orchestration
+
+
+@app.get("/api/v1/production-orchestrations")
+def list_production_orchestrations(limit: int = Query(default=30, ge=1, le=100)):
+    return get_production_orchestrations(limit)
+
+
+@app.get("/api/v1/production-orchestrations/{orchestration_id}")
+def get_production_orchestration_route(orchestration_id: str):
+    orchestration = production_orchestration_get(orchestration_id)
+    if not orchestration:
+        raise HTTPException(status_code=404, detail="Production orchestration not found")
+    return orchestration
 
 
 @app.post("/api/v1/production-batches", status_code=202)
