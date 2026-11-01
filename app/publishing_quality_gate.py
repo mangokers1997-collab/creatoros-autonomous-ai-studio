@@ -31,8 +31,15 @@ def inspect_publish_readiness(channel_id: str, project_id: str, render_job_id: s
         "Render belongs to selected project." if render and render.get("project_id") == project_id else "Render is missing or belongs to another project.")
     add("Render completed", bool(render and render.get("status") == "rendered"),
         "Render status is rendered." if render and render.get("status") == "rendered" else "Render must finish successfully.")
-    metadata = validate_publish_metadata(channel.get("platform") if channel else "", title, caption)
-    add("Publishing metadata", metadata["valid"], "; ".join(metadata["errors"]) or "Title and caption meet platform limits.")
+    if channel:
+        try:
+            metadata = validate_publish_metadata(channel.get("platform", ""), title, caption)
+            add("Publishing metadata", metadata["valid"],
+                "; ".join(metadata["errors"]) or "Title and caption meet platform limits.")
+        except ValueError as exc:
+            add("Publishing metadata", False, str(exc))
+    else:
+        add("Publishing metadata", False, "Cannot validate metadata without a valid channel.")
     path = Path(render.get("output_path", "")) if render and render.get("output_path") else None
     file_ok = bool(path and path.is_file() and path.stat().st_size > 1024)
     add("Video file", file_ok, f"{path.stat().st_size} bytes." if file_ok else "Rendered video file is missing or too small.")
