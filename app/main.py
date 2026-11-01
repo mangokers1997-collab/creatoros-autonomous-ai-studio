@@ -38,6 +38,7 @@ from app.youtube_adapter import (
 )
 from app.publishing_worker import start_worker, stop_worker, worker_status
 from app.production_worker import start_worker as start_production_worker, stop_worker as stop_production_worker, worker_status as production_worker_status
+from app.resource_scheduler import resource_snapshot
 from app.control_center import get_control_center
 from app.performance_optimizer import build_optimization_report
 from app.content_brain import build_content_brain_report, create_brain_strategy
@@ -781,6 +782,11 @@ def create_production_orchestration_route(payload: ProductionOrchestrationReques
 @app.get("/api/v1/production-worker/status")
 def production_worker_status_route():
     return production_worker_status()
+
+
+@app.get("/api/v1/resources/status")
+def resource_status_route():
+    return resource_snapshot()
 
 
 @app.get("/api/v1/production-orchestrations")
