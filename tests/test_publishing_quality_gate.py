@@ -31,7 +31,7 @@ class PublishingQualityGateTests(unittest.TestCase):
         project.return_value = self.project
         render.return_value = self.render
         probe.return_value = Mock(returncode=0, stdout=json.dumps({
-            "format": {"duration": "30", "format_name": "mov,mp4"},
+            "format": {"duration": "30", "format_name": "mov,mp4,m4a"},
             "streams": [
                 {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
                 {"codec_type": "audio", "codec_name": "aac"},
@@ -63,7 +63,7 @@ class PublishingQualityGateTests(unittest.TestCase):
         project.return_value = self.project
         render.return_value = self.render
         probe.return_value = Mock(returncode=0, stdout=json.dumps({
-            "format": {"duration": "30"},
+            "format": {"duration": "30", "format_name": "mov,mp4,m4a"},
             "streams": [
                 {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
                 {"codec_type": "audio", "codec_name": "aac"},
