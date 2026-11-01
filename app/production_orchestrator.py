@@ -54,12 +54,14 @@ def run_production_orchestration(orchestration_id: str) -> None:
             eligible = eligible[:int(options.get("max_items", 5))]
             if not eligible:
                 raise RuntimeError("No planned strategy items remain.")
-            batch = database.production_batch_create(item["strategy_id"], eligible, {
-                "generate_voice": bool(options.get("generate_voice", True)),
-                "render_video": bool(options.get("render_video", True)),
-                "duration_seconds": int(options.get("duration_seconds", 48)),
-            })
-            database.production_orchestration_item_update(item["id"], "processing", batch_id=batch["id"])
+            batch = database.production_batch_get(item.get("batch_id")) if item.get("batch_id") else None
+            if not batch:
+                batch = database.production_batch_create(item["strategy_id"], eligible, {
+                    "generate_voice": bool(options.get("generate_voice", True)),
+                    "render_video": bool(options.get("render_video", True)),
+                    "duration_seconds": int(options.get("duration_seconds", 48)),
+                })
+                database.production_orchestration_item_update(item["id"], "processing", batch_id=batch["id"])
             database.production_orchestration_refresh(orchestration_id)
             run_production_batch(batch["id"])
             final_batch = database.production_batch_refresh(batch["id"])
