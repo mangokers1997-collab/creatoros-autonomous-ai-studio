@@ -37,6 +37,7 @@ from app.youtube_adapter import (
     youtube_connection_status, upload_youtube_video,
 )
 from app.publishing_worker import start_worker, stop_worker, worker_status
+from app.production_worker import start_worker as start_production_worker, stop_worker as stop_production_worker, worker_status as production_worker_status
 from app.control_center import get_control_center
 from app.performance_optimizer import build_optimization_report
 from app.content_brain import build_content_brain_report, create_brain_strategy
@@ -54,9 +55,11 @@ async def lifespan(_: FastAPI):
     init_db()
     init_auth_tables()
     start_worker()
+    start_production_worker()
     try:
         yield
     finally:
+        stop_production_worker()
         stop_worker()
 
 
@@ -765,16 +768,19 @@ def promote_experiment_winner(experiment_id: str, payload: ExperimentPromoteRequ
 
 
 @app.post("/api/v1/production-orchestrations", status_code=202)
-def create_production_orchestration_route(payload: ProductionOrchestrationRequest, background_tasks: BackgroundTasks):
+def create_production_orchestration_route(payload: ProductionOrchestrationRequest):
     try:
-        orchestration = create_production_orchestration(
+        return create_production_orchestration(
             payload.strategy_ids, payload.max_items,
             payload.generate_voice, payload.render_video, payload.duration_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    background_tasks.add_task(run_production_orchestration, orchestration["id"])
-    return orchestration
+
+
+@app.get("/api/v1/production-worker/status")
+def production_worker_status_route():
+    return production_worker_status()
 
 
 @app.get("/api/v1/production-orchestrations")
