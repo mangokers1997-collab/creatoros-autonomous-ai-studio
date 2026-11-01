@@ -50,12 +50,12 @@ def run_production_orchestration(orchestration_id: str) -> None:
             plan = database.strategy_plan_get(item["strategy_id"])
             if not plan:
                 raise RuntimeError("Strategy plan no longer exists.")
-            eligible = [row for row in plan["items"] if row["status"] in {"planned", "in_progress"}]
-            eligible = eligible[:int(options.get("max_items", 5))]
-            if not eligible:
-                raise RuntimeError("No planned strategy items remain.")
             batch = database.production_batch_get(item.get("batch_id")) if item.get("batch_id") else None
             if not batch:
+                eligible = [row for row in plan["items"] if row["status"] in {"planned", "in_progress"}]
+                eligible = eligible[:int(options.get("max_items", 5))]
+                if not eligible:
+                    raise RuntimeError("No planned strategy items remain.")
                 batch = database.production_batch_create(item["strategy_id"], eligible, {
                     "generate_voice": bool(options.get("generate_voice", True)),
                     "render_video": bool(options.get("render_video", True)),
