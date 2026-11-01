@@ -572,3 +572,12 @@ The Experiments workspace supports controlled, manual A/B comparisons for title 
 The Content Brain combines previously collected trend feed items, saved Content Intelligence reports, linked published-video metrics, and saved strategy history into a prioritized topic shortlist. It filters close duplicates against existing strategy topics for the selected market and niche, assigns transparent heuristic priority scores, and drafts a strategy calendar. Use `POST /api/v1/content-brain/analyze` for recommendations and `POST /api/v1/content-brain/strategy` to create a saved strategy plan. The dashboard is available under **Content Brain**.
 
 Scoring is directional, not a forecast of views, revenue, or virality. Performance history is a weak channel-level signal and does not prove that a topic caused an outcome. The engine can only use trends and research reports already collected; it does not promise live research refresh in this analysis request. Draft plans require human review for accuracy, originality, audience fit, and media rights. No content is automatically produced, approved, or published by this feature.
+
+
+## Multi-channel Orchestrator (Stage 34)
+
+The **Multi-channel Orchestrator** provides a portfolio view across configured channels, including each channel's market, language, niche, strategy plans, projects, production batches, and publishing-job states. The dashboard is available from the **Multi-channel Orchestrator** navigation item.
+
+Use `GET /api/v1/orchestrator/overview` to retrieve the portfolio and `POST /api/v1/orchestrator/strategy-plans` to create separate strategy drafts for selected channel IDs. Planning is isolated by channel: the planner checks that channel's existing strategy windows and moves a new plan to the next available date when the requested date overlaps. Different channels can use parallel planning windows. Up to 25 channels can be selected per request; each plan supports 1-90 days and 1-5 videos per day.
+
+This stage creates strategy drafts only. It does not start production batches, schedule posts, or publish content automatically. The portfolio reflects records stored in CreatorOS and does not independently verify current platform-side status. Platform APIs, account permissions, quotas, and human approval remain required for publishing.
