@@ -53,11 +53,16 @@ def inspect_publish_readiness(channel_id: str, project_id: str, render_job_id: s
                 video = next((x for x in streams if x.get("codec_type") == "video"), None)
                 audio = next((x for x in streams if x.get("codec_type") == "audio"), None)
                 duration = float((data.get("format") or {}).get("duration") or 0)
+                format_name = str((data.get("format") or {}).get("format_name") or "")
+                add("MP4 container", "mp4" in format_name.split(","),
+                    f"Container: {format_name or 'unknown'}.")
                 add("Readable video stream", bool(video and duration > 0),
                     f"{duration:.1f}s; {video.get('codec_name', 'unknown') if video else 'no video stream'}.")
-                add("Audio track", bool(audio), f"{audio.get('codec_name')} audio found." if audio else "No audio track detected.")
-                add("Portrait dimensions", bool(video and video.get("width", 0) <= video.get("height", 0)),
-                    f"{video.get('width')}×{video.get('height')}" if video else "Video stream missing.", required=False)
+                add("H.264 codec", bool(video and video.get("codec_name") == "h264"),
+                    video.get("codec_name", "missing") if video else "Video stream missing.")
+                add("Portrait resolution", bool(video and video.get("width") == 1080 and video.get("height") == 1920),
+                    f"{video.get('width')}×{video.get('height')}" if video else "Video stream missing.")
+                add("Audio track", bool(audio), f"{audio.get('codec_name')} audio found." if audio else "Silent video; add voice or music if appropriate.", required=False)
             except (subprocess.TimeoutExpired, ValueError, OSError) as exc:
                 add("Media integrity", False, f"ffprobe failed: {str(exc)[:300]}")
     else:
