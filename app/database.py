@@ -291,6 +291,25 @@ def init_db() -> None:
             UNIQUE(experiment_id,label)
         );
         CREATE INDEX IF NOT EXISTS idx_experiment_status ON content_experiments(status,created_at);
+        CREATE TABLE IF NOT EXISTS production_orchestrations (
+            id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'queued',
+            total_channels INTEGER NOT NULL DEFAULT 0,
+            completed_channels INTEGER NOT NULL DEFAULT 0,
+            failed_channels INTEGER NOT NULL DEFAULT 0,
+            options_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS production_orchestration_items (
+            id TEXT PRIMARY KEY, orchestration_id TEXT NOT NULL,
+            strategy_id TEXT NOT NULL, channel_id TEXT, batch_id TEXT,
+            status TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            FOREIGN KEY(orchestration_id) REFERENCES production_orchestrations(id) ON DELETE CASCADE,
+            FOREIGN KEY(strategy_id) REFERENCES strategy_plans(id) ON DELETE CASCADE,
+            FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE SET NULL,
+            FOREIGN KEY(batch_id) REFERENCES production_batches(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_prod_orch_items ON production_orchestration_items(orchestration_id,status);
         CREATE TABLE IF NOT EXISTS oauth_states (
             state TEXT PRIMARY KEY,
             channel_id TEXT NOT NULL,
@@ -1184,3 +1203,78 @@ def experiment_promote_winner(experiment_id: str, variant_id: str) -> dict | Non
         conn.execute("UPDATE content_experiments SET status='promoted',winner_variant_id=?,updated_at=? WHERE id=?",
                      (variant_id, now, experiment_id))
     return experiment_get(experiment_id)
+
+def production_orchestration_create(strategy_records: list[dict], options: dict) -> dict:
+    now = _now()
+    orchestration_id = str(uuid4())
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO production_orchestrations
+            (id,status,total_channels,completed_channels,failed_channels,options_json,created_at,updated_at)
+            VALUES (?, 'queued', ?, 0, 0, ?, ?, ?)""",
+            (orchestration_id, len(strategy_records), json.dumps(options, ensure_ascii=False), now, now),
+        )
+        for record in strategy_records:
+            conn.execute(
+                """INSERT INTO production_orchestration_items
+                (id,orchestration_id,strategy_id,channel_id,status,error,created_at,updated_at)
+                VALUES (?,?,?,?, 'queued','',?,?)""",
+                (str(uuid4()), orchestration_id, record["strategy_id"], record.get("channel_id"), now, now),
+            )
+    return production_orchestration_get(orchestration_id)
+
+
+def production_orchestration_get(orchestration_id: str) -> dict | None:
+    with _connect() as conn:
+        row = _dict(conn.execute("SELECT * FROM production_orchestrations WHERE id=?", (orchestration_id,)).fetchone())
+        if not row:
+            return None
+        try:
+            row["options"] = json.loads(row.pop("options_json"))
+        except (json.JSONDecodeError, TypeError):
+            row["options"] = {}
+        row["items"] = [dict(item) for item in conn.execute(
+            "SELECT * FROM production_orchestration_items WHERE orchestration_id=? ORDER BY created_at,id",
+            (orchestration_id,),
+        ).fetchall()]
+        return row
+
+
+def production_orchestration_list(limit: int = 30) -> list[dict]:
+    with _connect() as conn:
+        ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM production_orchestrations ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()]
+    return [row for oid in ids if (row := production_orchestration_get(oid))]
+
+
+def production_orchestration_item_update(item_id: str, status: str, **fields) -> dict | None:
+    allowed = {"batch_id", "error"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    updates.update({"status": status, "updated_at": _now(), "id": item_id})
+    assignments = ", ".join(f"{key}=:{key}" for key in updates if key != "id")
+    with _connect() as conn:
+        cur = conn.execute(f"UPDATE production_orchestration_items SET {assignments} WHERE id=:id", updates)
+        if not cur.rowcount:
+            return None
+        return _dict(conn.execute("SELECT * FROM production_orchestration_items WHERE id=?", (item_id,)).fetchone())
+
+
+def production_orchestration_refresh(orchestration_id: str) -> dict | None:
+    with _connect() as conn:
+        counts = conn.execute(
+            """SELECT COUNT(*) total,
+            SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed,
+            SUM(CASE WHEN status IN ('queued','processing') THEN 1 ELSE 0 END) active
+            FROM production_orchestration_items WHERE orchestration_id=?""",
+            (orchestration_id,),
+        ).fetchone()
+        status = "processing" if counts["active"] else ("completed" if not counts["failed"] else ("partial_failure" if counts["completed"] else "failed"))
+        conn.execute(
+            """UPDATE production_orchestrations SET status=?,completed_channels=?,failed_channels=?,updated_at=? WHERE id=?""",
+            (status, counts["completed"] or 0, counts["failed"] or 0, _now(), orchestration_id),
+        )
+    return production_orchestration_get(orchestration_id)
+
+
