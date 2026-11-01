@@ -31,6 +31,7 @@ from app.publishing_engine import (
     list_publish_jobs, get_publish_job, publishing_adapter_status, retry_publish_job,
 )
 from app.platform_validation import validate_publish_metadata
+from app.publishing_quality_gate import inspect_publish_readiness
 from app.youtube_adapter import (
     start_youtube_connection, complete_youtube_connection,
     youtube_connection_status, upload_youtube_video,
@@ -874,6 +875,17 @@ def youtube_upload(job_id: str, payload: YouTubeUploadRequest):
 @app.post("/api/v1/publishing/validate-metadata")
 def validate_publishing_metadata(payload: PublishMetadataValidationRequest):
     return validate_publish_metadata(payload.platform, payload.title, payload.caption)
+
+
+@app.post("/api/v1/publishing/quality-check")
+def publishing_quality_check(payload: PublishDraftRequest):
+    try:
+        return inspect_publish_readiness(
+            payload.channel_id, payload.project_id, payload.render_job_id,
+            payload.title, payload.caption,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.post("/api/v1/publishing/drafts", status_code=201)
