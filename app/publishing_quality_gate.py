@@ -56,7 +56,7 @@ def inspect_publish_readiness(channel_id: str, project_id: str, render_job_id: s
                 add("Readable video stream", bool(video and duration > 0),
                     f"{duration:.1f}s; {video.get('codec_name', 'unknown') if video else 'no video stream'}.")
                 add("Audio track", bool(audio), f"{audio.get('codec_name')} audio found." if audio else "No audio track detected.")
-                add("Portrait dimensions", bool(video and video.get("width", 0) > video.get("height", 0) is False),
+                add("Portrait dimensions", bool(video and video.get("width", 0) <= video.get("height", 0)),
                     f"{video.get('width')}×{video.get('height')}" if video else "Video stream missing.", required=False)
             except (subprocess.TimeoutExpired, ValueError, OSError) as exc:
                 add("Media integrity", False, f"ffprobe failed: {str(exc)[:300]}")
